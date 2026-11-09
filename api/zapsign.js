@@ -62,23 +62,30 @@ async function empregador(req, casaId) {
 }
 
 // Lê o documento na ZapSign e atualiza o recibo no banco.
+// status / assinado_em = funcionária; emp_assinado_em = visto do empregador.
+function precisaSync(rec) {
+  return !!rec.zapsign_doc && (rec.status === "pendente" || (rec.status === "assinado" && rec.emp_signer && !rec.emp_assinado_em));
+}
 async function sincronizar(rec) {
-  if (!rec.zapsign_doc || rec.status !== "pendente") return rec;
+  if (!precisaSync(rec)) return rec;
   const doc = await zap("/docs/" + rec.zapsign_doc + "/");
-  const s = (doc.signers || [])[0] || {};
-  let status = "pendente", assinado_em = null;
-  // Documentação: documento "pending" | "signed" (e "refused" quando recusado); signatário "new" | "link-opened" | "signed"
-  if (doc.status === "signed" || s.status === "signed") { status = "assinado"; assinado_em = s.signed_at || doc.last_update_at || new Date().toISOString(); }
-  else if (doc.status === "refused" || s.status === "refused" || doc.deleted) status = doc.deleted ? "cancelado" : "recusado";
-  if (status === rec.status) return rec;
-  const [novo] = await db("/rest/v1/recibos_publicados?id=eq." + rec.id, {
-    method: "PATCH", body: { status, assinado_em }, prefer: "return=representation"
-  });
+  const sig = doc.signers || [];
+  const func = sig.find(x => x.token === rec.func_signer) || sig[0] || {};
+  const emp = rec.emp_signer ? (sig.find(x => x.token === rec.emp_signer) || {}) : null;
+  const mud = {};
+  if (rec.status === "pendente") {
+    if (func.status === "signed" || (doc.status === "signed")) { mud.status = "assinado"; mud.assinado_em = func.signed_at || new Date().toISOString(); }
+    else if (func.status === "refused" || doc.status === "refused") mud.status = "recusado";
+    else if (doc.deleted) mud.status = "cancelado";
+  }
+  if (emp && !rec.emp_assinado_em && (emp.status === "signed" || doc.status === "signed")) mud.emp_assinado_em = emp.signed_at || new Date().toISOString();
+  if (!Object.keys(mud).length) return rec;
+  const [novo] = await db("/rest/v1/recibos_publicados?id=eq." + rec.id, { method: "PATCH", body: mud, prefer: "return=representation" });
   return novo;
 }
 
 async function publicar(req, b) {
-  const { casa_id, func_id, competencia, nome, dados, pdf_base64, app_url } = b;
+  const { casa_id, func_id, competencia, nome, dados, pdf_base64, app_url, empregador_nome } = b;
   if (!casa_id || !func_id || !/^\d{4}-\d{2}$/.test(competencia || "") || !pdf_base64) throw new Erro(400, "Dados do recibo incompletos.");
   if (pdf_base64.length > 4_000_000) throw new Erro(413, "PDF grande demais.");
   const user = await empregador(req, casa_id);
@@ -107,14 +114,28 @@ async function publicar(req, b) {
         send_automatic_email: false,
         send_automatic_whatsapp: false,
         lock_name: true,
+        qualification: "empregada",
         redirect_link: (app_url || "").startsWith("https://") ? app_url : undefined
+      }, {
+        // Visto do empregador: assinatura na tela, sem selfie nem foto de documento
+        name: (empregador_nome || "Empregador").slice(0, 200),
+        auth_mode: "assinaturaTela",
+        require_selfie_photo: false,
+        require_document_photo: false,
+        send_automatic_email: false,
+        send_automatic_whatsapp: false,
+        lock_name: true,
+        qualification: "empregador (visto)",
+        redirect_link: (app_url || "").startsWith("https://") ? app_url.replace("assinado=1", "visto=1") : undefined
       }]
     }
   });
   const signer = (doc.signers || [])[0] || {};
+  const signerEmp = (doc.signers || [])[1] || {};
   const [rec] = await db("/rest/v1/recibos_publicados", {
     method: "POST", prefer: "return=representation",
-    body: { casa_id, func_id, competencia, dados: dados || {}, status: "pendente", zapsign_doc: doc.token, sign_url: signer.sign_url, criado_por: user.id }
+    body: { casa_id, func_id, competencia, dados: dados || {}, status: "pendente", zapsign_doc: doc.token, sign_url: signer.sign_url,
+      func_signer: signer.token, emp_signer: signerEmp.token, emp_sign_url: signerEmp.sign_url, criado_por: user.id }
   });
   return { recibo: rec };
 }
@@ -133,32 +154,38 @@ async function cancelar(req, b) {
 async function statusCasa(req, b) {
   const { casa_id } = b;
   await empregador(req, casa_id);
-  const lista = await db(`/rest/v1/recibos_publicados?casa_id=eq.${casa_id}&status=in.(pendente,assinado,recusado)&order=criado_em.desc&limit=200&select=id,func_id,competencia,status,zapsign_doc,assinado_em,criado_em`);
-  const out = [];
-  for (const r of lista) out.push(await sincronizar(r).catch(() => r));
-  return { recibos: out.map(({ zapsign_doc, ...r }) => r) };
+  const lista = await db(`/rest/v1/recibos_publicados?casa_id=eq.${casa_id}&status=in.(pendente,assinado,recusado)&order=criado_em.desc&limit=200&select=id,func_id,competencia,status,zapsign_doc,func_signer,emp_signer,assinado_em,emp_assinado_em,criado_em`);
+  let n = 0;
+  for (const r of lista) if (precisaSync(r) && n++ < 40) await sincronizar(r).catch(() => r);
+  return { verificados: n };
 }
 
-// Funcionária: confere a sessão pelo banco e atualiza o status do recibo dela.
+// Funcionária: confere a sessão pelo banco e atualiza o status dos recibos dela.
+async function recibosDaSessao(sessao) {
+  const r = await supa("/rest/v1/rpc/meus_recibos", { method: "POST", body: { p_token: sessao } });
+  if (!r || r.erro) throw new Erro(401, "Sessão expirada. Entre de novo.");
+  return r;
+}
 async function statusFunc(b) {
-  const sess = await supa("/rest/v1/rpc/meu_recibo", { method: "POST", body: { p_token: b.sessao } });
-  if (!sess || sess.erro) throw new Erro(401, "Sessão expirada. Entre de novo.");
-  if (!sess.recibo) return sess;
-  const [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${sess.recibo.id}&select=id,status,zapsign_doc,assinado_em`);
-  const novo = await sincronizar(rec).catch(() => rec);
-  return { ...sess, recibo: { ...sess.recibo, status: novo.status, assinado_em: novo.assinado_em } };
+  const sess = await recibosDaSessao(b.sessao);
+  const ids = (sess.recibos || []).filter(x => x.status === "pendente").map(x => x.id);
+  if (!ids.length) return sess;
+  const lista = await db(`/rest/v1/recibos_publicados?id=in.(${ids.join(",")})&select=id,status,zapsign_doc,func_signer,emp_signer,assinado_em,emp_assinado_em`);
+  let mudou = false;
+  for (const r of lista) { const n = await sincronizar(r).catch(() => r); if (n.status !== r.status) mudou = true; }
+  return mudou ? await recibosDaSessao(b.sessao) : sess;
 }
 
-// Link novo (temporário) do PDF assinado.
+// Link novo (temporário, 60 min) do PDF. Assinado quando os dois assinaram; antes disso, o original.
 async function arquivo(req, b) {
   let rec;
   if (b.sessao) {
-    const sess = await supa("/rest/v1/rpc/meu_recibo", { method: "POST", body: { p_token: b.sessao } });
-    if (!sess || sess.erro || !sess.recibo) throw new Erro(401, "Sessão expirada. Entre de novo.");
-    [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${sess.recibo.id}&select=id,zapsign_doc,status`);
+    const sess = await recibosDaSessao(b.sessao);
+    if (!(sess.recibos || []).some(x => x.id === b.id)) throw new Erro(404, "Recibo não encontrado.");
+    [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${encodeURIComponent(b.id)}&select=id,zapsign_doc`);
   } else {
     await empregador(req, b.casa_id);
-    [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${encodeURIComponent(b.id)}&casa_id=eq.${b.casa_id}&select=id,zapsign_doc,status`);
+    [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${encodeURIComponent(b.id)}&casa_id=eq.${b.casa_id}&select=id,zapsign_doc`);
   }
   if (!rec || !rec.zapsign_doc) throw new Erro(404, "Recibo não encontrado.");
   const doc = await zap("/docs/" + rec.zapsign_doc + "/");

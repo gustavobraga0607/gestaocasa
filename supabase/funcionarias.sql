@@ -152,3 +152,36 @@ grant execute on function public.acessos_da_casa(uuid) to authenticated;
 grant execute on function public.login_funcionaria(text, text) to anon, authenticated;
 grant execute on function public.meu_recibo(uuid) to anon, authenticated;
 grant execute on function public.sair_funcionaria(uuid) to anon, authenticated;
+
+-- ===== Versão 2: visto do empregador e regra de disponibilidade =====
+-- A funcionária vê todos os recibos ainda não assinados por ela e,
+-- depois de assinar, cada recibo continua disponível por mais 15 dias.
+-- O visto do empregador não muda esse prazo.
+alter table public.recibos_publicados add column if not exists func_signer text;
+alter table public.recibos_publicados add column if not exists emp_signer text;
+alter table public.recibos_publicados add column if not exists emp_sign_url text;
+alter table public.recibos_publicados add column if not exists emp_assinado_em timestamptz;
+
+create or replace function public.meus_recibos(p_token uuid)
+returns json language plpgsql security definer stable set search_path = public as $$
+declare s public.sessoes_func; a public.acessos_func; lista json;
+begin
+  select * into s from public.sessoes_func where token = p_token and expira_em > now();
+  if not found then return json_build_object('erro', 'sessao'); end if;
+  select * into a from public.acessos_func where casa_id = s.casa_id and func_id = s.func_id and ativo;
+  if not found then return json_build_object('erro', 'sessao'); end if;
+  select coalesce(json_agg(json_build_object(
+      'id', r.id, 'competencia', r.competencia, 'dados', r.dados, 'status', r.status,
+      'sign_url', case when r.status = 'pendente' then r.sign_url end,
+      'assinado_em', r.assinado_em,
+      'disponivel_ate', case when r.status = 'assinado' then r.assinado_em + interval '15 days' end,
+      'visto_empregador', r.emp_assinado_em is not null
+    ) order by r.competencia desc, r.criado_em desc), '[]'::json)
+    into lista
+    from public.recibos_publicados r
+    where r.casa_id = s.casa_id and r.func_id = s.func_id
+      and (r.status in ('pendente', 'recusado')
+           or (r.status = 'assinado' and r.assinado_em > now() - interval '15 days'));
+  return json_build_object('nome', a.nome, 'recibos', lista);
+end $$;
+grant execute on function public.meus_recibos(uuid) to anon, authenticated;

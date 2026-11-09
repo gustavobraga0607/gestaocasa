@@ -98,6 +98,9 @@ body.tela-login header .monthbar{display:none}
 .modal{background:var(--surface);color:var(--fg);border-radius:14px;max-width:480px;width:100%;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 40px rgb(0 0 0/.25);max-height:calc(100% - 32px);overflow:auto}
 .modal-corpo{display:flex;flex-direction:column;gap:10px}.modal-corpo p{margin:0}
 .modal-acoes{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+details summary{cursor:pointer;color:var(--accent);font-size:.9rem;padding:4px 0}
+.tot-func{border-top:1.5px solid var(--fg);padding-top:8px}
+.sig+.sig{margin-top:4px}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -551,6 +554,7 @@ async function iniciarNuvem(){
   });
   if(funcSessao){mode="func";funcDados=null;render();carregarFunc(true);
     if(/[?&]assinado=1/.test(location.search))history.replaceState(null,"",location.pathname);return}
+  if(/[?&]visto=1/.test(location.search)){history.replaceState(null,"",location.pathname);ultimaSync=0;setTimeout(()=>sincronizarAssinaturas(true),2500)}
   const {data}=await sb.auth.getSession();
   if(data&&data.session&&!/type=recovery/.test(location.hash))abrirCasa(data.session);
   else if(mode!=="login"){mode="login";render()}
@@ -652,11 +656,11 @@ const cpfOculto=c=>c&&c.length===11?`${c.slice(0,3)}.***.***-${c.slice(9)}`:"";
 async function carregarAcessos(){if(!sb||!nuvem)return;const {data,error}=await sb.rpc("acessos_da_casa",{p_casa:nuvem.casa.id});
   if(error){acessos=null;return}acessos={};(data||[]).forEach(a=>acessos[a.func_id]=a);if(!appHasFocus())render()}
 async function carregarPublicados(){if(!sb||!nuvem)return;
-  const {data,error}=await sb.from("recibos_publicados").select("id,func_id,competencia,status,assinado_em,criado_em").eq("casa_id",nuvem.casa.id).neq("status","cancelado").order("criado_em",{ascending:false}).limit(300);
+  const {data,error}=await sb.from("recibos_publicados").select("id,func_id,competencia,status,assinado_em,emp_sign_url,emp_assinado_em,criado_em").eq("casa_id",nuvem.casa.id).neq("status","cancelado").order("criado_em",{ascending:false}).limit(300);
   if(!error){publicados=data||[];if(!appHasFocus())render()}}
 async function sincronizarAssinaturas(forcar){
   if(!nuvem||(!forcar&&Date.now()-ultimaSync<60000))return;ultimaSync=Date.now();
-  if(!publicados.some(p=>p.status==="pendente"))return;
+  if(!publicados.some(p=>p.status==="pendente"||(p.status==="assinado"&&p.emp_sign_url&&!p.emp_assinado_em)))return;
   try{await api({acao:"status",casa_id:nuvem.casa.id});await carregarPublicados()}catch(e){}
 }
 function publicadoDe(funcId,comp){return publicados.find(p=>p.func_id===funcId&&p.competencia===comp)}
@@ -665,9 +669,16 @@ function chipAssinatura(e){
   if(!nuvem)return "";
   const p=publicadoDe(e.id,mesKey()),ac=acessos&&acessos[e.id];
   const fmtD=d=>new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-  if(p&&p.status==="assinado")return `<div class="sig ok"><span>✓ Recibo assinado em ${fmtD(p.assinado_em||p.criado_em)}</span><button type="button" class="keep ghost" data-act="pdfAssinado" data-pid="${p.id}">PDF assinado</button></div>`;
-  if(p&&p.status==="pendente")return `<div class="sig pend"><span>Aguardando assinatura dela</span><button type="button" class="keep ghost" data-act="syncAss">Atualizar</button></div>`;
-  if(p&&p.status==="recusado")return `<div class="sig bad"><span>Ela recusou a assinatura. Converse com ela, edite e salve a folha de novo.</span></div>`;
+  if(p){
+    const ela=p.status==="assinado"?`<span>✓ ${esc(e.nome||"Ela")} assinou em ${fmtD(p.assinado_em||p.criado_em)}</span>`
+      :p.status==="recusado"?`<span>${esc(e.nome||"Ela")} recusou a assinatura. Converse com ela, edite e salve a folha de novo.</span>`
+      :`<span>Aguardando a assinatura de ${esc(e.nome||"dela")}</span><button type="button" class="keep ghost" data-act="syncAss">Atualizar</button>`;
+    const cls=p.status==="assinado"?"ok":p.status==="recusado"?"bad":"pend";
+    const visto=!p.emp_sign_url?"":p.emp_assinado_em?`<div class="sig ok"><span>✓ Seu visto dado em ${fmtD(p.emp_assinado_em)}</span></div>`
+      :`<div class="sig pend"><span>Falta o seu visto (assinatura simples, sem selfie)</span><a class="btnlike keep" href="${esc(p.emp_sign_url)}" target="_blank" rel="noopener">Dar visto</a></div>`;
+    const pdf=p.status==="assinado"?`<div class="sig"><span>${p.emp_assinado_em||!p.emp_sign_url?"Recibo assinado pelos dois":"O PDF final sai depois do seu visto"}</span><button type="button" class="keep ghost" data-act="pdfAssinado" data-pid="${p.id}">${p.emp_assinado_em||!p.emp_sign_url?"PDF assinado":"PDF"}</button></div>`:"";
+    return `<div class="sig ${cls}">${ela}</div>${visto}${pdf}`;
+  }
   if(!folhaSalva())return ac&&ac.ativo?`<div class="sig"><span>O recibo vai para ela assinar quando você salvar a folha.</span></div>`:"";
   if(!ac||!ac.ativo)return `<div class="sig"><span>Sem acesso ao app. Crie em Cadastros para ela ver e assinar o recibo.</span></div>`;
   return `<div class="sig"><span>Recibo ainda não enviado para assinatura.</span><button type="button" class="keep" data-act="enviarUm" data-id="${e.id}">Enviar para assinatura</button></div>`;
@@ -683,7 +694,7 @@ async function publicarRecibo(e){
   const pdf=doc.output("datauristring").split(",")[1];
   const dados={mes:MESES[ym.m],ano:ym.y,empregador:c.empregadorNome||"",nome:e.nome,funcao:e.funcao,itens:itensRecibo(e,r,c),
     liquido:r.liquido,total:r2(r.transferir+r.pag13+r.feriasSaida),adiantamentos:ads.map(x=>({data:x.data,valor:n(x.valor)}))};
-  await api({acao:"publicar",casa_id:nuvem.casa.id,func_id:e.id,competencia:mesKey(),nome:e.nome||"Funcionária",dados,pdf_base64:pdf,app_url:location.origin+"/?assinado=1"});
+  await api({acao:"publicar",casa_id:nuvem.casa.id,func_id:e.id,competencia:mesKey(),nome:e.nome||"Funcionária",empregador_nome:c.empregadorNome||(nuvem&&nuvem.email)||"Empregador",dados,pdf_base64:pdf,app_url:location.origin+"/?assinado=1"});
 }
 async function publicarFolha(){
   const alvo=empsMes().filter(e=>acessos&&acessos[e.id]&&acessos[e.id].ativo);if(!alvo.length)return;
@@ -709,7 +720,7 @@ async function pedirSalvarFolha(){
   let html=`<p>Os valores de ${mes} ficam congelados e os campos do mês ficam travados até você clicar em <b>Editar folha</b>.</p>`;
   if(nuvem){
     const com=emps.filter(e=>acessos&&acessos[e.id]&&acessos[e.id].ativo),sem=emps.filter(e=>!(acessos&&acessos[e.id]&&acessos[e.id].ativo));
-    html+=com.length?`<div class="banner info"><b>O recibo ficará disponível para ${com.map(e=>esc(e.nome)).join(" e ")}</b> no app e será enviado para assinatura na ZapSign, com selfie. Confira os valores antes de continuar.</div>`:"";
+    html+=com.length?`<div class="banner info"><b>O recibo ficará disponível para ${com.map(e=>esc(e.nome)).join(" e ")}</b> no app até ela assinar (e por mais 15 dias depois) e será enviado para assinatura na ZapSign, com selfie. Você também recebe um pedido de <b>visto</b>, sem selfie. Confira os valores antes de continuar.</div>`:"";
     if(sem.length)html+=`<p class="muted small">Sem acesso ao app: ${sem.map(e=>esc(e.nome)).join(", ")}. O recibo fica guardado e pode ser enviado depois que você criar o acesso em Cadastros.</p>`;
   }
   const ok=await confirmar(`Salvar a folha de ${mes}?`,html,nuvem&&emps.some(e=>acessos&&acessos[e.id]&&acessos[e.id].ativo)?"Salvar e liberar recibos":"Salvar folha");
@@ -767,13 +778,13 @@ async function entrarFunc(){
   btn.disabled=false;
   if(error||!data||data.erro){msg.textContent=error?msgAuth(error):data.erro;msg.classList.add("erro");return}
   funcSessao=data.token;try{localStorage.setItem(SESS_FUNC,funcSessao)}catch(e){}
-  funcDados={nome:data.nome,recibo:undefined};mode="func";render();carregarFunc(true);
+  funcDados={nome:data.nome,recibos:undefined};mode="func";render();carregarFunc(true);
 }
 async function carregarFunc(sync){
   if(!funcSessao)return;funcCarregando=true;
   let d=null;
   if(sync){try{d=await api({acao:"status_func",sessao:funcSessao},false)}catch(e){d=null}}
-  if(!d||(d.recibo===undefined&&!d.erro)){const r=await sb.rpc("meu_recibo",{p_token:funcSessao});d=r.data}
+  if(!d||(d.recibos===undefined&&!d.erro)){const r=await sb.rpc("meus_recibos",{p_token:funcSessao});d=r.data}
   funcCarregando=false;
   if(!d||d.erro){sairFunc("Sua sessão terminou. Entre de novo.");return}
   funcDados=d;if(mode==="func")render();
@@ -781,28 +792,37 @@ async function carregarFunc(sync){
 function sairFunc(msg){if(funcSessao&&sb)sb.rpc("sair_funcionaria",{p_token:funcSessao});funcSessao=null;funcDados=null;try{localStorage.removeItem(SESS_FUNC)}catch(e){}
   mode="login";loginTipo="funcionaria";render();if(msg){const m=document.getElementById("lf-msg");if(m){m.textContent=msg;m.classList.add("erro")}}}
 function viewFuncionaria(){
-  const d=funcDados||{};const r=d.recibo;
+  const d=funcDados||{};const lista=d.recibos;
   let h=`<div class="func-wrap"><section class="card"><div class="conta-linha"><div><div class="muted small">Olá,</div><h2>${esc(d.nome||"")}</h2></div><button type="button" data-act="sairFunc">Sair</button></div></section>`;
-  if(r===undefined||funcCarregando&&!r)return h+`<section class="card"><div class="muted">Carregando seu recibo…</div></section></div>`;
-  if(!r)return h+`<section class="card empty-func"><h2>Nenhum recibo disponível</h2><div class="muted">Quando seu empregador salvar a folha do mês, o recibo aparece aqui para você conferir e assinar.</div></section></div>`;
-  const D=r.dados||{},it=D.itens||{prov:[],desc:[],outros:[]};
-  const linha=(t,ref,v,cls="")=>`<tr><td>${esc(t)}${ref?` <span class="muted small">${esc(ref)}</span>`:""}</td><td class="${cls}">${brl(v)}</td></tr>`;
-  const st=r.status==="assinado"?`<span class="chip" style="background:var(--good-soft);color:var(--good)">Assinado</span>`:r.status==="recusado"?`<span class="chip informal">Recusado</span>`:`<span class="chip informal">Aguardando sua assinatura</span>`;
-  h+=`<section class="card"><div class="conta-linha"><h2>Recibo de ${esc(D.mes||"")} de ${esc(String(D.ano||""))}</h2>${st}</div>
-    ${D.empregador?`<div class="muted small">Empregador: ${esc(D.empregador)}</div>`:""}
-    <table class="calc">
-      <tr class="sec"><td colspan="2" class="label">Proventos</td></tr>${(it.prov||[]).map(x=>linha(x[0],x[1],x[2])).join("")}
-      ${(it.desc||[]).length?`<tr class="sec"><td colspan="2" class="label">Descontos</td></tr>${it.desc.map(x=>linha(x[0],x[1],-x[2],"neg")).join("")}`:""}
-      <tr class="tot"><td>Salário líquido</td><td>${brl(D.liquido||0)}</td></tr>
-      ${(it.outros||[]).length?`<tr class="sec"><td colspan="2" class="label">Outros valores</td></tr>${it.outros.map(x=>linha(x[0],"",x[2],x[2]<0?"neg":"")).join("")}`:""}
-      <tr class="tot"><td>Total a receber</td><td>${brl(D.total||0)}</td></tr>
-    </table>`;
-  if(r.status==="pendente"&&r.sign_url)h+=`<div class="assinar-box"><a class="btnlike primary-link" href="${esc(r.sign_url)}" target="_blank" rel="noopener">Conferir e assinar o recibo</a>
-      <div class="muted small">A assinatura é feita no site da ZapSign e pede uma <b>selfie</b>. Use o celular com câmera e boa luz. Depois de assinar, volte aqui.</div>
-      <button type="button" data-act="atualizarFunc">Já assinei, atualizar</button></div>`;
-  if(r.status==="assinado")h+=`<div class="assinar-box"><div>✓ Você assinou em ${new Date(r.assinado_em).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})}.</div><span id="pdf-func"><button type="button" class="primary" data-act="baixarFunc">Baixar recibo assinado</button></span></div>`;
-  if(r.status==="recusado")h+=`<div class="banner warn">Você recusou este recibo. Converse com seu empregador.</div>`;
-  return h+`</section></div>`;
+  if(lista===undefined)return h+`<section class="card"><div class="muted">Carregando seus recibos…</div></section></div>`;
+  if(!lista.length)return h+`<section class="card empty-func"><h2>Nenhum recibo disponível</h2><div class="muted">Quando seu empregador salvar a folha do mês, o recibo aparece aqui para você conferir e assinar. Recibos assinados ficam disponíveis por 15 dias.</div></section></div>`;
+  const pend=lista.filter(r=>r.status==="pendente").length;
+  if(pend)h+=`<div class="banner info">${pend===1?"Você tem 1 recibo para assinar.":`Você tem ${pend} recibos para assinar.`}</div>`;
+  const fmt=x=>new Date(x).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
+  for(const r of lista){
+    const D=r.dados||{},it=D.itens||{prov:[],desc:[],outros:[]};
+    const linha=(t,ref,v,cls="")=>`<tr><td>${esc(t)}${ref?` <span class="muted small">${esc(ref)}</span>`:""}</td><td class="${cls}">${brl(v)}</td></tr>`;
+    const st=r.status==="assinado"?`<span class="chip" style="background:var(--good-soft);color:var(--good)">Assinado</span>`:r.status==="recusado"?`<span class="chip informal">Recusado</span>`:`<span class="chip informal">Aguardando sua assinatura</span>`;
+    h+=`<section class="card"><div class="conta-linha"><h2>Recibo de ${esc(D.mes||"")} de ${esc(String(D.ano||""))}</h2>${st}</div>
+      ${D.empregador?`<div class="muted small">Empregador: ${esc(D.empregador)}</div>`:""}
+      <details ${r.status==="pendente"?"open":""}><summary>Ver valores</summary>
+      <table class="calc">
+        <tr class="sec"><td colspan="2" class="label">Proventos</td></tr>${(it.prov||[]).map(x=>linha(x[0],x[1],x[2])).join("")}
+        ${(it.desc||[]).length?`<tr class="sec"><td colspan="2" class="label">Descontos</td></tr>${it.desc.map(x=>linha(x[0],x[1],-x[2],"neg")).join("")}`:""}
+        <tr class="tot"><td>Salário líquido</td><td>${brl(D.liquido||0)}</td></tr>
+        ${(it.outros||[]).length?`<tr class="sec"><td colspan="2" class="label">Outros valores</td></tr>${it.outros.map(x=>linha(x[0],"",x[2],x[2]<0?"neg":"")).join("")}`:""}
+      </table></details>
+      <div class="conta-linha tot-func"><b>Total a receber</b><b class="num">${brl(D.total||0)}</b></div>`;
+    if(r.status==="pendente"&&r.sign_url)h+=`<div class="assinar-box"><a class="btnlike primary-link" href="${esc(r.sign_url)}" target="_blank" rel="noopener">Conferir e assinar o recibo</a>
+        <div class="muted small">A assinatura é feita no site da ZapSign e pede uma <b>selfie</b>. Use o celular com câmera e boa luz. Depois de assinar, volte aqui.</div>
+        <button type="button" data-act="atualizarFunc">Já assinei, atualizar</button></div>`;
+    if(r.status==="assinado")h+=`<div class="assinar-box"><div>✓ Você assinou em ${fmt(r.assinado_em)}. Este recibo fica disponível aqui até ${new Date(r.disponivel_ate).toLocaleDateString("pt-BR")}.</div>
+        <span id="pdf-func-${r.id}"><button type="button" class="primary" data-act="baixarFunc" data-id="${r.id}">Baixar recibo${r.visto_empregador?" assinado":""}</button></span>
+        ${r.visto_empregador?"":`<div class="muted small">O PDF com todas as assinaturas fica pronto depois do visto do empregador.</div>`}</div>`;
+    if(r.status==="recusado")h+=`<div class="banner warn">Você recusou este recibo. Converse com seu empregador.</div>`;
+    h+=`</section>`;
+  }
+  return h+`</div>`;
 }
 
 async function start(){
@@ -1499,8 +1519,8 @@ view.addEventListener("click",async ev=>{
   else if(a==="gerarLote"){gerarLote(b)}
   else if(a==="tipoLogin"){loginTipo=b.dataset.t;loginModo="entrar";render()}
   else if(a==="sairFunc"){sairFunc()}
-  else if(a==="atualizarFunc"){b.disabled=true;b.textContent="Atualizando…";await carregarFunc(true);if(funcDados&&funcDados.recibo&&funcDados.recibo.status==="pendente")toast("A assinatura ainda não apareceu. Se você já assinou, espere um minuto e atualize de novo.")}
-  else if(a==="baixarFunc"){b.disabled=true;b.textContent="Gerando link…";try{const r=await api({acao:"arquivo",sessao:funcSessao},false);document.getElementById("pdf-func").innerHTML=`<a class="btnlike primary-link" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir recibo assinado (PDF)</a>`}catch(err){toast(err.message);b.disabled=false;b.textContent="Baixar recibo assinado"}}
+  else if(a==="atualizarFunc"){b.disabled=true;b.textContent="Atualizando…";await carregarFunc(true);if(funcDados&&(funcDados.recibos||[]).some(r=>r.status==="pendente"))toast("A assinatura ainda não apareceu. Se você já assinou, espere um minuto e atualize de novo.")}
+  else if(a==="baixarFunc"){const id=b.dataset.id,txt=b.textContent;b.disabled=true;b.textContent="Gerando link…";try{const r=await api({acao:"arquivo",sessao:funcSessao,id},false);document.getElementById("pdf-func-"+id).innerHTML=`<a class="btnlike primary-link" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir ${r.assinado?"recibo assinado":"recibo"} (PDF)</a>`}catch(err){toast(err.message);b.disabled=false;b.textContent=txt}}
   else if(a==="pdfAssinado"){b.disabled=true;try{const r=await api({acao:"arquivo",casa_id:nuvem.casa.id,id:b.dataset.pid});b.outerHTML=`<a class="btnlike" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir PDF assinado</a>`}catch(err){toast(err.message);b.disabled=false}}
   else if(a==="syncAss"){b.disabled=true;await sincronizarAssinaturas(true);render()}
   else if(a==="enviarUm"){const e=empsMes().find(x=>x.id===b.dataset.id);if(!e)return;

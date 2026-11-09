@@ -22,9 +22,10 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 ## Acesso da funcionária e assinatura (ZapSign)
 
 - Em **Cadastros**, cada funcionária com CPF ganha o bloco **Acesso da funcionária ao app**: o empregador cria a senha (o app sugere uma) e passa para ela. Também dá para trocar a senha ou bloquear o acesso.
-- A funcionária abre o app, escolhe **Sou funcionária** e entra com CPF e senha. Ela vê **só o recibo do último mês publicado** e mais nada.
+- A funcionária abre o app, escolhe **Sou funcionária** e entra com CPF e senha. Ela vê **todos os recibos que ainda não assinou** e, depois de assinar, cada recibo continua disponível por **15 dias**. Ela não vê mais nada.
 - Ao **Salvar folha**, uma janela avisa que o recibo ficará disponível para ela. O recibo (com os recibos de adiantamento do mês) vai para assinatura na ZapSign, com **selfie**.
-- O status aparece na folha: aguardando, assinado (com o PDF assinado) ou recusado. **Editar folha** cancela as assinaturas pendentes daquele mês.
+- O empregador também assina, de forma simplificada (**visto**: assinatura na tela, sem selfie). O visto não muda o prazo de disponibilidade para a funcionária. O PDF final da ZapSign fica pronto depois das duas assinaturas.
+- O status aparece na folha: a assinatura dela (aguardando, assinado ou recusado), o seu visto (com o botão **Dar visto**) e o PDF assinado. **Editar folha** cancela as assinaturas pendentes daquele mês.
 - O app não cria nem altera webhooks na ZapSign: ele consulta o status pela API. Os documentos ficam na pasta `/Folha da Casa/` e têm `external_id` começando com `folhadacasa:`.
 
 ### Configuração
