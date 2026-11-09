@@ -1362,7 +1362,21 @@ start();
 <script>
 /* App instalável: modo offline e convite para instalar na tela inicial */
 (function(){
-  if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("/sw.js").catch(function(){});
+  /* Atualização: cada publicação muda o sw.js; quando a versão nova assume, oferece recarregar */
+  if("serviceWorker" in navigator&&location.protocol==="https:"){
+    var tinhaVersao=!!navigator.serviceWorker.controller,avisado=false;
+    navigator.serviceWorker.register("/sw.js").then(function(reg){
+      document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")reg.update().catch(function(){})});
+      setInterval(function(){reg.update().catch(function(){})},30*60*1000);
+    }).catch(function(){});
+    navigator.serviceWorker.addEventListener("controllerchange",function(){
+      if(!tinhaVersao||avisado)return;avisado=true;
+      var d=document.createElement("div");d.className="banner info install-bn";d.style.marginBottom="0";
+      d.innerHTML='<div><b>Nova versão do app disponível.</b> Atualize para usar as últimas correções.</div><button type="button" class="primary">Atualizar agora</button>';
+      d.querySelector("button").onclick=function(){location.reload()};
+      var st=document.getElementById("status");st.parentNode.insertBefore(d,st);
+    });
+  }
   var box=document.getElementById("install");if(!box)return;
   var instalado=window.matchMedia("(display-mode: standalone)").matches||navigator.standalone;
   var fechado=false;try{fechado=localStorage.getItem("folha-install-fechado")==="1"}catch(e){}
