@@ -784,9 +784,17 @@ async function carregarFunc(sync){
   if(!funcSessao)return;funcCarregando=true;
   let d=null;
   if(sync){try{d=await api({acao:"status_func",sessao:funcSessao},false)}catch(e){d=null}}
-  if(!d||(d.recibos===undefined&&!d.erro)){const r=await sb.rpc("meus_recibos",{p_token:funcSessao});d=r.data}
+  if(!d||(d.recibos===undefined&&!d.erro)){
+    const r=await sb.rpc("meus_recibos",{p_token:funcSessao});
+    if(r.error&&/PGRST202|meus_recibos/.test((r.error.code||"")+" "+(r.error.message||""))){
+      // Banco ainda sem a versão nova: usa a consulta antiga (só o último recibo)
+      const o=await sb.rpc("meu_recibo",{p_token:funcSessao});
+      d=o.data&&!o.data.erro?{nome:o.data.nome,recibos:o.data.recibo?[o.data.recibo]:[]}:(o.data||null);
+    }else d=r.error?null:r.data;
+  }
   funcCarregando=false;
-  if(!d||d.erro){sairFunc("Sua sessão terminou. Entre de novo.");return}
+  if(d&&d.erro==="sessao"){sairFunc("Sua sessão terminou. Entre de novo.");return}
+  if(!d||d.erro){funcDados={...(funcDados||{}),recibos:funcDados&&funcDados.recibos||[]};if(mode==="func")render();toast("Não foi possível carregar os recibos agora. Verifique a internet e tente de novo.");return}
   funcDados=d;if(mode==="func")render();
 }
 function sairFunc(msg){if(funcSessao&&sb)sb.rpc("sair_funcionaria",{p_token:funcSessao});funcSessao=null;funcDados=null;try{localStorage.removeItem(SESS_FUNC)}catch(e){}
