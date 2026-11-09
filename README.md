@@ -16,7 +16,7 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Guia DAE do eSocial**: INSS da empregada, INSS patronal 8%, GILRAT 0,8%, FGTS 8% e indenização compensatória 3,2% (só para registradas).
 - **13º salário** proporcional aos meses trabalhados: 1ª parcela em novembro (até 30/11) e 2ª em dezembro (até 20/12).
 - **Férias** com 1/3, data de vencimento do período e quanto guardar por mês para 13º e férias.
-- **Recibo** de pagamento pronto para copiar.
+- **Recibo em PDF** no formato de holerite, em duas vias (empregador e funcionária), com proventos e descontos, valor por extenso e linhas de assinatura. Também dá para copiar o recibo em texto.
 
 ## Funcionárias sem registro
 

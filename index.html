@@ -118,6 +118,7 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
 @media (max-width:760px){.emp-body{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 </head>
 <body>
@@ -164,7 +165,7 @@ const DEFAULT_CFG={
   feriadosExtras:[],
   encargos:{patronal:8,gilrat:0.8,fgts:8,indeniz:3.2}
 };
-const NEW_EMP=()=>({nome:"",funcao:"Empregada doméstica",registrada:true,admissao:"",demissao:"",salario:1621,dias:[1,2,3,4,5],tarifa:5.00,viagensDia:2,
+const NEW_EMP=()=>({nome:"",funcao:"Empregada doméstica",registrada:true,admissao:"",demissao:"",cpf:"",salario:1621,dias:[1,2,3,4,5],tarifa:5.00,viagensDia:2,
   descontaVT:true,descontaINSS:true,trabalhaFeriados:false,jornadaMensal:220,percHE:50,
   adicionalFixo:0,adicionalDesc:"",descontoFixo:0,descontoDesc:"",ordem:Date.now()});
 const NEW_ADJ=()=>({faltasDias:{},horasExtras:0,diasExtras:0,diasFerias:0,outrosAcresc:0,outrosDesc:0,obs:""});
@@ -444,7 +445,7 @@ function viewMes(){
           <table class="calc" id="res-${e.id}"></table>
           <div class="pay" id="pay-${e.id}"></div>
           <div class="direitos" id="dir-${e.id}"></div>
-          <div class="actions"><button data-act="recibo" data-id="${e.id}">Gerar recibo</button></div>
+          <div class="actions"><button class="primary" data-act="pdf" data-id="${e.id}">Baixar recibo em PDF</button><button data-act="recibo" data-id="${e.id}">Copiar recibo em texto</button></div>
           <div id="rec-${e.id}"></div>
         </div>
       </div></section>`;
@@ -521,6 +522,127 @@ function updateOutputs(){
     <div class="tile"><span class="label">Custo da casa em ${MESES[ym.m].toLowerCase()}</span><span class="v">${brl(T.custo)}</span><span class="muted small">${emps.length} funcionária(s)</span></div>`;
 }
 
+/* ---------- Recibo em PDF ---------- */
+function extenso(v){
+  const u=["","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove"];
+  const d=["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"];
+  const c=["","cento","duzentos","trezentos","quatrocentos","quinhentos","seiscentos","setecentos","oitocentos","novecentos"];
+  const tri=n=>{if(n===100)return "cem";const C=Math.floor(n/100),r=n%100,D=Math.floor(r/10),U=r%10;const p=[];if(C)p.push(c[C]);if(r)p.push(r<20?u[r]:(U?d[D]+" e "+u[U]:d[D]));return p.join(" e ")};
+  const cents=Math.round(Math.abs(v)*100),inteiro=Math.floor(cents/100),cent=cents%100;
+  const mi=Math.floor(inteiro/1e6),mil=Math.floor(inteiro%1e6/1000),re=inteiro%1000;
+  let s="";
+  if(mi)s+=mi===1?"um milhão":tri(mi)+" milhões";
+  if(mil)s+=(s?(re===0?" e ":" "):"")+(mil===1?"mil":tri(mil)+" mil");
+  if(re)s+=(s?((re<100||re%100===0)?" e ":" "):"")+tri(re);
+  let out="";
+  if(inteiro)out=s+(inteiro===1?" real":(mil===0&&re===0&&mi?" de reais":" reais"));
+  if(cent)out+=(out?" e ":"")+tri(cent)+(cent===1?" centavo":" centavos");
+  return out||"zero real";
+}
+const pdfMoeda=v=>"R$ "+Math.abs(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtData=k=>k?`${k.slice(8,10)}/${k.slice(5,7)}/${k.slice(0,4)}`:"";
+function itensRecibo(e,r,c){
+  const dm=k=>`${k.slice(8)}/${k.slice(5,7)}`;
+  const prov=[],desc=[],outros=[];
+  prov.push(r.diasPagos<30?[`Salário proporcional${r.admMes?" (admissão em "+fmtData(e.admissao)+")":""}${r.demMes?" (desligamento em "+fmtData(e.demissao)+")":""}`,`${r.diasPagos} dias`,r.salMes]:["Salário mensal","30 dias",r.sal]);
+  if(r.terco)prov.push(["1/3 constitucional de férias",`${r.diasFerias} dias`,r.terco]);
+  if(r.he)prov.push([`Horas extras (${n(e.percHE)}%)`,`${n(r.adj.horasExtras)} h`,r.he]);
+  if(n(e.adicionalFixo))prov.push([e.adicionalDesc||"Acréscimo fixo","",n(e.adicionalFixo)]);
+  if(n(r.adj.outrosAcresc))prov.push(["Outros acréscimos","",n(r.adj.outrosAcresc)]);
+  if(r.faltas)desc.push([`Faltas sem justificativa (${r.fInj.map(dm).join(", ")})`,`${r.faltas} dias`,r.descFaltas]);
+  if(r.descDSR)desc.push([`DSR perdido (${r.dsr.map(x=>dm(x.k)).join(", ")})`,`${r.dsrDias} dias`,r.descDSR]);
+  if(r.reg&&e.descontaINSS)desc.push(["INSS","tabela",r.inss]);
+  if(r.vtDesc)desc.push(["Vale-transporte",`${n(c.vtPerc)}%`,r.vtDesc]);
+  if(n(e.descontoFixo))desc.push([e.descontoDesc||"Desconto fixo","",n(e.descontoFixo)]);
+  if(n(r.adj.outrosDesc))desc.push(["Outros descontos","",n(r.adj.outrosDesc)]);
+  if(r.vtBruto)outros.push([`Vale-transporte (${r.vtDias} dias × ${n(e.viagensDia)} viagens × ${pdfMoeda(n(e.tarifa))})`,"",r.vtBruto]);
+  if(r.d13){const d=r.d13;const nome=d.parcela==="saida"?`13º salário proporcional (${r.avos}/12 avos)`:d.parcela===1?`13º salário – 1ª parcela (${r.avos}/12 avos)`:`13º salário – 2ª parcela (${r.avos}/12 avos)`;
+    outros.push([nome,"",d.bruto]);if(d.inss)outros.push(["INSS sobre o 13º salário","",-d.inss])}
+  if(r.feriasSaida)outros.push([`Férias proporcionais + 1/3 (${r.avosFS}/12 avos)`,"",r.feriasSaida]);
+  return {prov,desc,outros};
+}
+function desenharVia(doc,e,r,c,via){
+  const W=210,M=16,CW=W-2*M;
+  const AC=[44,73,176],INK=[24,32,46],MUT=[91,101,120],LN=[213,219,229],SUN=[236,240,247];
+  const T=(txt,x,yy,o={})=>{doc.setFont("helvetica",o.b?"bold":"normal");doc.setFontSize(o.s||9);doc.setTextColor(...(o.c||INK));doc.text(String(txt),x,yy,o.a?{align:o.a}:undefined)};
+  doc.setFillColor(...AC);doc.rect(0,0,W,5,"F");
+  let y=18;
+  T("RECIBO DE PAGAMENTO",M,y,{b:1,s:17});
+  T(via,W-M,y-6,{s:8,c:MUT,a:"right"});
+  T(`${MESES[ym.m]} de ${ym.y}`,W-M,y,{b:1,s:12,c:AC,a:"right"});
+  T(r.reg?"Empregada doméstica registrada no eSocial":"Trabalho doméstico sem registro",M,y+6,{s:8.5,c:MUT});
+  y+=13;
+  const bw=(CW-6)/2;
+  const caixa=(x,titulo,linhas)=>{doc.setDrawColor(...LN);doc.setLineWidth(.3);doc.roundedRect(x,y,bw,25,2,2,"S");
+    T(titulo.toUpperCase(),x+4,y+6,{b:1,s:7,c:MUT});
+    doc.setFont("helvetica","bold");doc.setFontSize(10.5);doc.setTextColor(...INK);doc.text(doc.splitTextToSize(linhas[0]||"—",bw-8)[0],x+4,y+12.5);
+    linhas.slice(1).filter(Boolean).forEach((l,i)=>{doc.setFont("helvetica","normal");doc.setFontSize(8.3);doc.setTextColor(...MUT);doc.text(doc.splitTextToSize(l,bw-8)[0],x+4,y+17.5+i*4.3)})};
+  caixa(M,"Empregador",[c.empregadorNome||"Informe o nome em Regras gerais",c.empregadorCPF?"CPF "+c.empregadorCPF:"",UFS[c.uf]?UFS[c.uf].cap+" – "+c.uf:""]);
+  caixa(M+bw+6,e.funcao||"Funcionária",[e.nome||"Sem nome",e.cpf?"CPF "+e.cpf:"",[e.admissao?"Admissão "+fmtData(e.admissao):"",`Salário ${pdfMoeda(r.sal)}`].filter(Boolean).join(" · ")]);
+  y+=32;
+  // Tabela proventos/descontos
+  const xRef=M+88,xProv=M+138,xDesc=W-M;
+  const it=itensRecibo(e,r,c);
+  doc.setFillColor(...SUN);doc.rect(M,y,CW,7.5,"F");
+  T("DESCRIÇÃO",M+3,y+5,{b:1,s:7.5,c:MUT});T("REFERÊNCIA",xRef,y+5,{b:1,s:7.5,c:MUT});
+  T("PROVENTOS",xProv,y+5,{b:1,s:7.5,c:MUT,a:"right"});T("DESCONTOS",xDesc-3,y+5,{b:1,s:7.5,c:MUT,a:"right"});
+  y+=7.5;
+  const linha=(desc,ref,prov,dsc)=>{doc.setFont("helvetica","normal");doc.setFontSize(9);const L=doc.splitTextToSize(desc,xRef-M-6);const h=Math.max(1,L.length)*4+3.2;
+    doc.setTextColor(...INK);doc.text(L,M+3,y+4.6);T(ref,xRef,y+4.6,{c:MUT});
+    if(prov!=null)T(pdfMoeda(prov),xProv,y+4.6,{a:"right"});if(dsc!=null)T(pdfMoeda(dsc),xDesc-3,y+4.6,{a:"right",c:[176,48,58]});
+    y+=h;doc.setDrawColor(...LN);doc.setLineDashPattern([.6,.8],0);doc.line(M,y,W-M,y);doc.setLineDashPattern([],0)};
+  it.prov.forEach(([d,rf,v])=>linha(d,rf,v,null));
+  it.desc.forEach(([d,rf,v])=>linha(d,rf,null,v));
+  const totP=it.prov.reduce((a,x)=>a+x[2],0),totD=it.desc.reduce((a,x)=>a+x[2],0);
+  doc.setDrawColor(...INK);doc.setLineWidth(.4);doc.line(M,y,W-M,y);
+  T("Totais",M+3,y+5.5,{b:1});T(pdfMoeda(totP),xProv,y+5.5,{b:1,a:"right"});T(pdfMoeda(totD),xDesc-3,y+5.5,{b:1,a:"right",c:[176,48,58]});
+  y+=9;
+  doc.setFillColor(...SUN);doc.roundedRect(M,y,CW,10,1.5,1.5,"F");
+  T("Salário líquido",M+4,y+6.6,{b:1,s:10});T(pdfMoeda(r.liquido),W-M-4,y+6.8,{b:1,s:12,a:"right"});
+  y+=15;
+  if(it.outros.length){
+    T("OUTROS VALORES PAGOS NESTE MÊS",M,y,{b:1,s:7.5,c:MUT});y+=2;
+    it.outros.forEach(([d,,v])=>{doc.setFont("helvetica","normal");doc.setFontSize(9);const L=doc.splitTextToSize(d,CW-50);doc.setTextColor(...INK);doc.text(L,M+3,y+4.6);
+      T((v<0?"- ":"")+pdfMoeda(v),W-M-3,y+4.6,{a:"right",c:v<0?[176,48,58]:INK});y+=L.length*4+3.2;doc.setDrawColor(...LN);doc.setLineDashPattern([.6,.8],0);doc.line(M,y,W-M,y);doc.setLineDashPattern([],0)});
+    y+=4;
+  }
+  const total=r2(r.transferir+r.pag13+r.feriasSaida);
+  doc.setFillColor(...AC);doc.roundedRect(M,y,CW,14,2,2,"F");
+  T("TOTAL A RECEBER",M+5,y+9,{b:1,s:11,c:[255,255,255]});T(pdfMoeda(total),W-M-5,y+9.3,{b:1,s:15,c:[255,255,255],a:"right"});
+  y+=21;
+  const decl=`Declaro ter recebido de ${c.empregadorNome||"meu empregador"} a importância de ${pdfMoeda(total)} (${extenso(total)}), referente ao pagamento de ${MESES[ym.m].toLowerCase()} de ${ym.y}, conforme discriminado acima, dando plena e geral quitação.`;
+  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(...INK);const DL=doc.splitTextToSize(decl,CW);doc.text(DL,M,y);y+=DL.length*4.6+4;
+  if(r.adj.obs){doc.setFontSize(8.5);doc.setTextColor(...MUT);const OL=doc.splitTextToSize("Observação: "+r.adj.obs,CW);doc.text(OL,M,y);y+=OL.length*4+3}
+  y=Math.max(y+14,248);
+  const cidade=UFS[c.uf]?UFS[c.uf].cap:"";
+  doc.setDrawColor(...INK);doc.setLineWidth(.3);
+  T(`${cidade?cidade+", ":""}_____ de ______________ de ${ym.y}`,M,y-2,{s:9.5});
+  doc.line(M,y+12,M+78,y+12);doc.line(W-M-78,y+12,W-M,y+12);
+  T(c.empregadorNome||"Empregador",M,y+17,{s:8,c:MUT});T(c.empregadorNome?(c.empregadorCPF?"Empregador · CPF "+c.empregadorCPF:"Empregador"):"Assinatura do empregador",M,y+21,{s:8,c:MUT});
+  T(e.nome||"Funcionária",W-M,y+17,{s:8,c:MUT,a:"right"});T(e.cpf?"CPF "+e.cpf:"Assinatura da funcionária",W-M,y+21,{s:8,c:MUT,a:"right"});
+  doc.setDrawColor(...LN);doc.line(M,286,W-M,286);
+  T(`Gerado pela Folha da Casa em ${new Date().toLocaleDateString("pt-BR")}`,M,290.5,{s:7,c:MUT});T(via,W-M,290.5,{s:7,c:MUT,a:"right"});
+}
+async function baixarPDF(id,btn){
+  const J=window.jspdf&&window.jspdf.jsPDF;
+  if(!J){toast("O gerador de PDF não carregou. Verifique a internet e recarregue a página.");return}
+  const e=empList().find(x=>x.id===id);if(!e)return;const c=cfg();const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[id],c);
+  const doc=new J({unit:"mm",format:"a4"});
+  doc.setProperties({title:`Recibo ${e.nome} ${MESES[ym.m]} ${ym.y}`});
+  desenharVia(doc,e,r,c,"1ª via – Empregador");doc.addPage();desenharVia(doc,e,r,c,"2ª via – Funcionária");
+  const slug=(e.nome||"funcionaria").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const filename=`recibo-${slug}-${ym.y}-${String(ym.m+1).padStart(2,"0")}.pdf`;
+  const blob=doc.output("blob");
+  if(window.claude&&window.claude.use){
+    const dl=await window.claude.use("downloads");
+    if(!dl){toast("Este visualizador não permite baixar arquivos.");return}
+    try{await dl.save({filename,data:blob});toast("Recibo salvo")}
+    catch(err){if(!err||err.code!=="declined")toast("Não foi possível salvar o PDF.")}
+    return;
+  }
+  const url=URL.createObjectURL(blob);const l=document.createElement("a");l.href=url;l.download=filename;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast("Recibo baixado");
+}
+
 function recibo(id){
   const e=empList().find(x=>x.id===id);if(!e)return;const c=cfg();const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[id],c);
   const L=(a,b)=>a.padEnd(34,".")+" "+b.padStart(14);
@@ -561,6 +683,7 @@ function viewFunc(){
         <div class="field"><label for="e-${e.id}-reg">Vínculo</label><select id="e-${e.id}-reg" data-emp-reg="1"><option value="1" ${e.registrada!==false?"selected":""}>Registrada no eSocial</option><option value="0" ${e.registrada===false?"selected":""}>Sem registro</option></select></div>
         ${f("admissao","Data de admissão",'type="date"')}
         ${f("demissao","Data de desligamento",'type="date"')}
+        ${f("cpf","CPF (sai no recibo)",'type="text" inputmode="numeric" placeholder="000.000.000-00"')}
       </div>
       ${e.registrada===false?`<div class="banner warn small">Sem registro: o app não calcula INSS, FGTS nem guia DAE. Salário, vale-transporte, 13º e férias com 1/3 são calculados normalmente.</div>`:""}
       <div class="field"><span class="label">Dias que trabalha</span><div class="days">${DIAS.map((d,i)=>`<label><input type="checkbox" data-dia="${i}" ${e.dias.includes(i)?"checked":""}>${d}</label>`).join("")}</div></div>
@@ -589,6 +712,12 @@ function viewFunc(){
 function viewRegras(){
   const c=cfg();
   let h=`<div style="display:flex;flex-direction:column;gap:16px">
+  <section class="card"><h2>Dados do empregador</h2><div class="muted small">Aparecem no recibo em PDF.</div>
+    <div class="grid-form">
+      <div class="field"><label for="cfg-en">Nome do empregador</label><input type="text" id="cfg-en" data-cfg="empregadorNome" value="${esc(c.empregadorNome||"")}" placeholder="Seu nome completo"></div>
+      <div class="field"><label for="cfg-ec">CPF do empregador</label><input type="text" inputmode="numeric" id="cfg-ec" data-cfg="empregadorCPF" value="${esc(c.empregadorCPF||"")}" placeholder="000.000.000-00"></div>
+    </div>
+  </section>
   <section class="card"><h2>INSS da empregada</h2><div class="muted small">Tabela progressiva. Atualize em janeiro, quando o governo divulgar a nova tabela.</div>
     <div class="table-wrap"><table class="list"><thead><tr><th>Faixa até (R$)</th><th>Alíquota (%)</th><th></th></tr></thead><tbody>
     ${c.inss.map((f,i)=>`<tr><td><input type="number" step="0.01" id="inss-ate-${i}" data-inss="${i}" data-k="ate" value="${f.ate}"></td><td><input type="number" step="0.01" id="inss-aliq-${i}" data-inss="${i}" data-k="aliq" value="${f.aliq}"></td><td><button class="ghost danger" data-act="delInss" data-i="${i}" aria-label="Remover faixa">×</button></td></tr>`).join("")}
@@ -673,6 +802,7 @@ view.addEventListener("click",ev=>{
   else if(a==="nodel"){render()}
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
+  else if(a==="pdf"){baixarPDF(b.dataset.id,b)}
   else if(a==="copy"){const ta=document.getElementById("rt-"+b.dataset.id);
     const fb=()=>{ta.focus();ta.select();toast("Texto selecionado. Use Copiar do seu aparelho.")};
     try{navigator.clipboard.writeText(ta.value).then(()=>toast("Recibo copiado"),fb)}catch(e){fb()}}
@@ -691,7 +821,7 @@ function c2(x){return JSON.parse(JSON.stringify(x||[]))}
 view.addEventListener("focusout",()=>{setTimeout(()=>{if(!appHasFocus()&&tab==="mes")updateOutputs()},0)});
 
 try{const t=localStorage.getItem("folha-tab");if(t)tab=t}catch(_){}
-window.__calc={calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
+window.__calc={baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
 start();
 })();
 </script>
