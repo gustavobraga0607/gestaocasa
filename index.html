@@ -71,6 +71,9 @@ nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--
 .lancs{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .lanc{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .lanc input[data-k=desc]{grid-column:1/-1}
+.lanc.adi{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) auto}
+.lanc.adi input[data-k=desc],.lanc.adi .adi-pdf{grid-column:1/-1}
+.adi-pdf{font-size:.85rem;padding:5px 10px}
 .lanc-x{padding:4px 10px}
 .cpf-msg{font-size:.78rem;color:var(--bad);min-height:0}
 input[aria-invalid=true]{border-color:var(--bad)}
@@ -181,7 +184,7 @@ const DEFAULT_CFG={
 const NEW_EMP=()=>({nome:"",funcao:"Empregada doméstica",registrada:true,admissao:"",demissao:"",cpf:"",salario:1621,dias:[1,2,3,4,5],tarifa:5.00,viagensDia:2,
   descontaVT:true,descontaINSS:true,trabalhaFeriados:false,jornadaMensal:220,percHE:50,
   adicionalFixo:0,adicionalDesc:"",descontoFixo:0,descontoDesc:"",ordem:Date.now()});
-const NEW_ADJ=()=>({faltasDias:{},horasExtras:0,diasExtras:0,diasFerias:0,outrosAcresc:0,outrosDesc:0,lancamentos:[],obs:""});
+const NEW_ADJ=()=>({faltasDias:{},horasExtras:0,diasExtras:0,diasFerias:0,outrosAcresc:0,outrosDesc:0,lancamentos:[],adiantamentos:[],obs:""});
 
 const today=new Date();
 let ym={y:today.getFullYear(),m:today.getMonth()};
@@ -328,7 +331,10 @@ function calcular(emp,y,m,adj,cfg){
   const inss=reg&&emp.descontaINSS?calcINSS(Math.max(0,bruto),cfg.inss):0;
   const vtDesc=emp.descontaVT?r2(Math.min(salMes*n(cfg.vtPerc)/100,vtBruto)):0;
   const outrosDesc=r2(n(emp.descontoFixo)+somaL("d"));
-  const liquido=r2(bruto-inss-vtDesc-outrosDesc);
+  // Adiantamentos já pagos no mês: abatidos do líquido (não mudam a base do INSS)
+  const adiants=(adj.adiantamentos||[]).filter(x=>x&&n(x.valor)>0).map(x=>({id:x.id,data:x.data||"",desc:(x.desc||"").trim(),valor:r2(n(x.valor))})).sort((a,b)=>a.data<b.data?-1:1);
+  const adiant=r2(adiants.reduce((a,x)=>a+x.valor,0));
+  const liquido=r2(bruto-inss-vtDesc-outrosDesc-adiant);
   const vtEmpregador=r2(vtBruto-vtDesc);
   const e={...DEFAULT_CFG.encargos,...(cfg.encargos||{})};
   const pct=(v,k)=>reg?r2(v*n(e[k])/100):0;
@@ -357,7 +363,7 @@ function calcular(emp,y,m,adj,cfg){
   return {lancs,reg,sal,dias,previstos,diasRef,refY,refM,faltas,faltasJust,fInj,fJus,dsr,dsrDias,descDSR,diasFerias,feriasValor,terco,vtFerias,vtDias,vtBruto,descFaltas,valorHora,he,adicional,bruto,inss,vtDesc,outrosDesc,liquido,vtEmpregador,enc,dae,transferir,
     avos,total13,d13,pag13,dae13,reserva13,reservaFerias,reservaEnc,ferias:proxFerias(emp,y,m),
     admMes,demMes,diasPagos,salMes,avosFS,feriasSaida,
-    custo:r2(liquido+vtBruto+dae+pag13+dae13+feriasSaida),adj};
+    adiants,adiant,custo:r2(liquido+adiant+vtBruto+dae+pag13+dae13+feriasSaida),adj};
 }
 
 /* ---------- Persistência ---------- */
@@ -424,7 +430,7 @@ function render(){
   if(tab==="mes")v.innerHTML=viewMes();
   else if(tab==="func")v.innerHTML=viewFunc();
   else v.innerHTML=viewRegras();
-  if(tab==="mes"&&folhaSalva())v.querySelectorAll("section.emp .adj input, section.emp .adj select, section.emp .adj button").forEach(x=>x.disabled=true);
+  if(tab==="mes"&&folhaSalva())v.querySelectorAll("section.emp .adj input, section.emp .adj select, section.emp .adj button:not(.keep)").forEach(x=>x.disabled=true);
   updateOutputs();
 }
 
@@ -471,7 +477,17 @@ function viewMes(){
               <button type="button" class="ghost danger lanc-x" data-act="delLanc" data-i="${i}" aria-label="Remover lançamento">×</button></div>`).join("")}</div>
             <div><button type="button" data-act="addLanc">+ Adicionar lançamento</button></div>
           </div>
-          <div class="field"><label for="a-${e.id}-obs">Observação</label><input type="text" id="a-${e.id}-obs" data-adj="obs" value="${esc(a.obs)}" placeholder="Ex.: adiantamento dia 15"></div>
+          <div class="field"><span class="label">Adiantamentos</span>
+            <div class="muted small">Valores pagos antes do fechamento. Cada um tem recibo próprio e é descontado na folha do mês.</div>
+            <div class="lancs">${(a.adiantamentos||[]).map((x,i)=>`<div class="lanc adi">
+              <input type="date" id="ad-${e.id}-${i}-data" data-adi="${i}" data-k="data" value="${esc(x.data||"")}" aria-label="Data do pagamento">
+              <input type="number" min="0" step="0.01" id="ad-${e.id}-${i}-valor" data-adi="${i}" data-k="valor" value="${x.valor===""?"":n(x.valor)}" placeholder="R$" aria-label="Valor">
+              <button type="button" class="ghost danger lanc-x" data-act="delAdi" data-i="${i}" aria-label="Remover adiantamento">×</button>
+              <input type="text" id="ad-${e.id}-${i}-desc" data-adi="${i}" data-k="desc" value="${esc(x.desc||"")}" placeholder="Observação (opcional)" aria-label="Observação">
+              <button type="button" class="keep adi-pdf" data-act="pdfAdi" data-i="${i}">Recibo do adiantamento (PDF)</button></div>`).join("")}</div>
+            <div><button type="button" data-act="addAdi">+ Adiantamento</button></div>
+          </div>
+          <div class="field"><label for="a-${e.id}-obs">Observação</label><input type="text" id="a-${e.id}-obs" data-adj="obs" value="${esc(a.obs)}" placeholder="Anotação livre sobre o mês"></div>
           <div>
             <div class="label">Escala e faltas do mês</div>
             <div class="muted small" style="margin:2px 0 8px">Toque no dia em que ela faltou. 1 toque: falta sem justificativa (desconta o dia e o DSR). 2 toques: falta justificada (atestado). 3 toques: limpa.</div>
@@ -496,7 +512,7 @@ function updateOutputs(){
   const c=cfgMes(),emps=empsMes(),travada=!!folhaSalva();let T={liq:0,vt:0,dae:0,custo:0,p13:0,reg:0};
   for(const e of emps){
     const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[e.id],c);
-    T.liq+=r.liquido;T.vt+=r.vtBruto;T.dae+=r.dae+r.dae13;T.custo+=r.custo;T.p13+=r.pag13+r.feriasSaida;if(r.reg)T.reg++;
+    T.liq+=r.liquido;T.adi=(T.adi||0)+r.adiant;T.vt+=r.vtBruto;T.dae+=r.dae+r.dae13;T.custo+=r.custo;T.p13+=r.pag13+r.feriasSaida;if(r.reg)T.reg++;
     const cal=document.getElementById("cal-"+e.id);
     if(cal){const first=new Date(ym.y,ym.m,1).getDay();let g=DIAS.map(d=>`<div class="h">${d[0]}</div>`).join("");
       for(let i=0;i<first;i++)g+=`<div></div>`;
@@ -523,6 +539,8 @@ function updateOutputs(){
       <tr><td>Vale-transporte ${e.descontaVT?`<span class="muted small">até ${n(c.vtPerc)}% do salário</span>`:`<span class="muted small">não descontado</span>`}</td><td class="neg">${brl(-r.vtDesc)}</td></tr>`;
       if(n(e.descontoFixo))rows+=`<tr><td>${esc(e.descontoDesc||"Desconto fixo")}</td><td class="neg">${brl(-n(e.descontoFixo))}</td></tr>`;
       r.lancs.filter(l=>l.tipo==="d").forEach(l=>rows+=`<tr><td>${esc(l.desc)} <span class="muted small">avulso</span></td><td class="neg">${brl(-l.valor)}</td></tr>`);
+      r.adiants.forEach(x=>rows+=`<tr><td>Adiantamento salarial <span class="muted small">pago em ${x.data?dm(x.data):"data não informada"}${x.desc?" · "+esc(x.desc):""}</span></td><td class="neg">${brl(-x.valor)}</td></tr>`);
+      if(r.liquido<0)rows+=`<tr><td colspan="2" class="small" style="text-align:left;font-family:var(--f-body);color:var(--bad)">Os descontos e adiantamentos passam do salário do mês. Confira os valores.</td></tr>`;
       rows+=`<tr class="tot"><td>Salário líquido</td><td>${brl(r.liquido)}</td></tr>
       <tr class="sec"><td colspan="2" class="label">Vale-transporte (${ref})</td></tr>
       <tr><td>${r.vtDias} dia(s) × ${n(e.viagensDia)} viagens × ${brl(n(e.tarifa))}<div class="muted small">${r.diasRef} dia(s) de escala${r.faltas+r.faltasJust?` − ${r.faltas+r.faltasJust} falta(s)`:""}${r.vtFerias?` − ${r.vtFerias} em férias`:""}${n(r.adj.diasExtras)?` ${n(r.adj.diasExtras)>0?"+":"−"} ${Math.abs(n(r.adj.diasExtras))} extra(s)`:""}</div></td><td>${brl(r.vtBruto)}</td></tr>
@@ -557,7 +575,7 @@ function updateOutputs(){
       <div><span class="muted small">Guardar por mês</span><span class="v">${brl(r.reserva13+r.reservaFerias+r.reservaEnc)}</span><span class="muted small">${brl(r.reserva13)} p/ 13º + ${brl(r.reservaFerias)} p/ férias${r.reservaEnc?` + ${brl(r.reservaEnc)} encargos`:""}</span></div>`}
   }
   const tt=document.getElementById("totals");
-  if(tt)tt.innerHTML=`<div class="tile hl"><span class="label">Total a pagar às funcionárias</span><span class="v">${brl(T.liq+T.vt+T.p13)}</span><span class="muted small">${brl(T.liq)} salários + ${brl(T.vt)} VT${T.p13?` + ${brl(T.p13)} 13º/férias`:""}</span></div>
+  if(tt)tt.innerHTML=`<div class="tile hl"><span class="label">Total a pagar às funcionárias</span><span class="v">${brl(T.liq+T.vt+T.p13)}</span><span class="muted small">${brl(T.liq)} salários + ${brl(T.vt)} VT${T.p13?` + ${brl(T.p13)} 13º/férias`:""}${T.adi?` · ${brl(T.adi)} já adiantados`:""}</span></div>
     <div class="tile"><span class="label">Guias DAE</span><span class="v">${brl(T.dae)}</span><span class="muted small">${T.reg?"INSS, FGTS e encargos":"nenhuma funcionária registrada"}</span></div>
     <div class="tile"><span class="label">Custo da casa em ${MESES[ym.m].toLowerCase()}</span><span class="v">${brl(T.custo)}</span><span class="muted small">${emps.length} funcionária(s)</span></div>`;
 }
@@ -595,6 +613,7 @@ function itensRecibo(e,r,c){
   if(r.vtDesc)desc.push(["Vale-transporte",`${n(c.vtPerc)}%`,r.vtDesc]);
   if(n(e.descontoFixo))desc.push([e.descontoDesc||"Desconto fixo","",n(e.descontoFixo)]);
   r.lancs.filter(l=>l.tipo==="d").forEach(l=>desc.push([l.desc,"",l.valor]));
+  r.adiants.forEach(x=>desc.push([`Adiantamento salarial${x.data?" pago em "+fmtData(x.data):""}`,"",x.valor]));
   if(r.vtBruto)outros.push([`Vale-transporte (${r.vtDias} dias × ${n(e.viagensDia)} viagens × ${pdfMoeda(n(e.tarifa))})`,"",r.vtBruto]);
   if(r.d13){const d=r.d13;const nome=d.parcela==="saida"?`13º salário proporcional (${r.avos}/12 avos)`:d.parcela===1?`13º salário – 1ª parcela (${r.avos}/12 avos)`:`13º salário – 2ª parcela (${r.avos}/12 avos)`;
     outros.push([nome,"",d.bruto]);if(d.inss)outros.push(["INSS sobre o 13º salário","",-d.inss])}
@@ -672,6 +691,9 @@ async function baixarPDF(id,btn){
   desenharVia(doc,e,r,c,"1ª via – Empregador");doc.addPage();desenharVia(doc,e,r,c,"2ª via – Funcionária");
   const slug=(e.nome||"funcionaria").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
   const filename=`recibo-${slug}-${ym.y}-${String(ym.m+1).padStart(2,"0")}.pdf`;
+  await salvarPDF(doc,filename);
+}
+async function salvarPDF(doc,filename){
   const blob=doc.output("blob");
   if(window.claude&&window.claude.use){
     const dl=await window.claude.use("downloads");
@@ -683,6 +705,44 @@ async function baixarPDF(id,btn){
   const url=URL.createObjectURL(blob);const l=document.createElement("a");l.href=url;l.download=filename;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast("Recibo baixado");
 }
 
+const dmy=k=>`${k.slice(8)}/${k.slice(5,7)}`;
+function slugNome(s){return (s||"funcionaria").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}
+async function baixarAdiantamento(id,i){
+  const J=window.jspdf&&window.jspdf.jsPDF;
+  if(!J){toast("O gerador de PDF não carregou. Verifique a internet e recarregue a página.");return}
+  const e=empsMes().find(x=>x.id===id);if(!e)return;const c=cfgMes();
+  const x=((S.mes.ajustes||{})[id]||{}).adiantamentos?.[i];if(!x||!(n(x.valor)>0)){toast("Informe o valor do adiantamento antes de gerar o recibo.");return}
+  const valor=r2(n(x.valor));
+  const doc=new J({unit:"mm",format:"a4"});doc.setProperties({title:`Adiantamento ${e.nome} ${fmtData(x.data)}`});
+  const W=210,M=16,CW=W-2*M,AC=[44,73,176],INK=[24,32,46],MUT=[91,101,120],LN=[213,219,229],SUN=[236,240,247];
+  const T=(txt,xx,yy,o={})=>{doc.setFont("helvetica",o.b?"bold":"normal");doc.setFontSize(o.s||9);doc.setTextColor(...(o.c||INK));doc.text(String(txt),xx,yy,o.a?{align:o.a}:undefined)};
+  const via=(top,nome)=>{
+    doc.setFillColor(...AC);doc.rect(0,top,W,3,"F");
+    let y=top+15;
+    T("RECIBO DE ADIANTAMENTO SALARIAL",M,y,{b:1,s:14});T(nome,W-M,y-5,{s:8,c:MUT,a:"right"});
+    T(`Referente a ${MESES[ym.m]} de ${ym.y}`,W-M,y,{b:1,s:10.5,c:AC,a:"right"});
+    y+=7;
+    doc.setFillColor(...SUN);doc.roundedRect(M,y,CW,18,2,2,"F");
+    T("VALOR",M+5,y+7,{b:1,s:7.5,c:MUT});T(pdfMoeda(valor),M+5,y+14,{b:1,s:16});
+    T("DATA DO PAGAMENTO",W-M-5,y+7,{b:1,s:7.5,c:MUT,a:"right"});T(fmtData(x.data)||"___/___/______",W-M-5,y+14,{b:1,s:12,a:"right"});
+    y+=26;
+    const txt=`Recebi de ${c.empregadorNome||"meu empregador"}${c.empregadorCPF?", CPF "+c.empregadorCPF+",":""} a importância de ${pdfMoeda(valor)} (${extenso(valor)}), a título de adiantamento do salário de ${MESES[ym.m].toLowerCase()} de ${ym.y}, valor que será descontado na folha de pagamento deste mês.`;
+    doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(...INK);const L=doc.splitTextToSize(txt,CW);doc.text(L,M,y);y+=L.length*5+2;
+    if(x.desc){doc.setFontSize(9);doc.setTextColor(...MUT);const O=doc.splitTextToSize("Observação: "+x.desc,CW);doc.text(O,M,y);y+=O.length*4.5}
+    const cidade=UFS[c.uf]?UFS[c.uf].cap:"";
+    const ys=top+108;
+    T(`${cidade?cidade+", ":""}${x.data?`${+x.data.slice(8)} de ${MESES[+x.data.slice(5,7)-1].toLowerCase()} de ${x.data.slice(0,4)}`:"_____ de ______________ de "+ym.y}`,M,ys-14,{s:9.5});
+    doc.setDrawColor(...INK);doc.setLineWidth(.3);doc.line(W-M-90,ys,W-M,ys);
+    T(e.nome||"Funcionária",W-M,ys+5,{s:8.5,a:"right"});T([e.funcao,e.cpf?"CPF "+e.cpf:""].filter(Boolean).join(" · "),W-M,ys+9.5,{s:8,c:MUT,a:"right"});
+    T(c.empregadorNome?"Empregador: "+c.empregadorNome:"",M,ys+5,{s:8,c:MUT});
+  };
+  via(0,"1ª via – Empregador");
+  doc.setDrawColor(...LN);doc.setLineDashPattern([2,2],0);doc.line(8,148.5,W-8,148.5);doc.setLineDashPattern([],0);
+  T("✂  recorte aqui".replace("✂  ",""),W/2,147,{s:6.5,c:MUT,a:"center"});
+  via(148.5,"2ª via – Funcionária");
+  T(`Gerado pela Folha da Casa em ${new Date().toLocaleDateString("pt-BR")}`,M,292,{s:7,c:MUT});
+  await salvarPDF(doc,`adiantamento-${slugNome(e.nome)}-${x.data||mesKey()}.pdf`);
+}
 function recibo(id){
   const e=empsMes().find(x=>x.id===id);if(!e)return;const c=cfgMes();const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[id],c);
   const L=(a,b)=>a.padEnd(34,".")+" "+b.padStart(14);
@@ -698,6 +758,7 @@ function recibo(id){
   t+=L(`Desconto VT (${n(c.vtPerc)}%)`,brl(-r.vtDesc))+"\n";
   if(n(e.descontoFixo))t+=L(e.descontoDesc||"Desconto fixo",brl(-n(e.descontoFixo)))+"\n";
   r.lancs.filter(l=>l.tipo==="d").forEach(l=>t+=L(l.desc,brl(-l.valor))+"\n");
+  r.adiants.forEach(x=>t+=L(`Adiantamento ${x.data?dmy(x.data):""}`,brl(-x.valor))+"\n");
   t+=L("SALÁRIO LÍQUIDO",brl(r.liquido))+"\n\n";
   t+=L(`Vale-transporte (${r.vtDias} dias)`,brl(r.vtBruto))+"\n";
   if(r.feriasSaida)t+=L(`Férias proporcionais + 1/3 (${r.avosFS}/12)`,brl(r.feriasSaida))+"\n";
@@ -816,6 +877,8 @@ const view=document.getElementById("view");
 view.addEventListener("input",ev=>{
   const t=ev.target;const sec=t.closest("[data-emp]");
   if(folhaSalva()&&tab==="mes")return;
+  if(t.dataset.adi!==undefined&&sec){const a=getAdj(sec.dataset.emp);const x=(a.adiantamentos=(a.adiantamentos||[]).map(y=>({...y})))[+t.dataset.adi];if(!x)return;
+    x[t.dataset.k]=t.dataset.k==="valor"?(t.value===""?"":n(t.value)):t.value;updateOutputs();saveMes();return}
   if(t.dataset.lanc!==undefined&&sec){const id=sec.dataset.emp;const a=getAdj(id);const l=a.lancamentos[+t.dataset.lanc];if(!l)return;
     l[t.dataset.k]=t.dataset.k==="valor"?(t.value===""?"":n(t.value)):t.value;updateOutputs();saveMes();return}
   if(t.dataset.empF==="cpf"||t.dataset.cfg==="empregadorCPF"){t.value=mascaraCPF(t.value);const ok=t.value.length<14||cpfValido(t.value);t.setAttribute("aria-invalid",ok?"false":"true");const m=t.parentElement.querySelector(".cpf-msg");if(m)m.textContent=ok?"":"CPF inválido. Confira os números."}
@@ -852,6 +915,11 @@ view.addEventListener("click",ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="pdf"){baixarPDF(b.dataset.id,b)}
+  else if(a==="addAdi"){const id=b.closest("[data-emp]").dataset.emp;const ad=getAdj(id);const hoje=key(new Date());
+    ad.adiantamentos=[...(ad.adiantamentos||[]),{id:uid(),data:hoje.startsWith(mesKey())?hoje:mesKey()+"-15",valor:"",desc:""}];saveMes();render();
+    const el=document.getElementById(`ad-${id}-${ad.adiantamentos.length-1}-valor`);if(el)el.focus()}
+  else if(a==="delAdi"){const id=b.closest("[data-emp]").dataset.emp;const ad=getAdj(id);ad.adiantamentos=(ad.adiantamentos||[]).filter((_,i)=>i!==+b.dataset.i);saveMes();render()}
+  else if(a==="pdfAdi"){baixarAdiantamento(b.closest("[data-emp]").dataset.emp,+b.dataset.i)}
   else if(a==="addLanc"){const id=b.closest("[data-emp]").dataset.emp;const ad=getAdj(id);ad.lancamentos.push({desc:"",tipo:"p",valor:""});saveMes();render();
     const el=document.getElementById(`l-${id}-${ad.lancamentos.length-1}-desc`);if(el)el.focus()}
   else if(a==="delLanc"){const id=b.closest("[data-emp]").dataset.emp;const ad=getAdj(id);ad.lancamentos.splice(+b.dataset.i,1);saveMes();render()}
@@ -881,7 +949,7 @@ function c2(x){return JSON.parse(JSON.stringify(x||[]))}
 view.addEventListener("focusout",()=>{setTimeout(()=>{if(!appHasFocus()&&tab==="mes")updateOutputs()},0)});
 
 try{const t=localStorage.getItem("folha-tab");if(t)tab=t}catch(_){}
-window.__calc={baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
+window.__calc={baixarAdiantamento,baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
 start();
 })();
 </script>

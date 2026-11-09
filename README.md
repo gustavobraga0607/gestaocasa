@@ -26,6 +26,10 @@ Depois de conferir o mês, clique em **Salvar folha**. Os valores ficam congelad
 
 Cada funcionária tem uma lista livre de proventos e descontos do mês (gratificação, adiantamento, empréstimo etc.). A descrição digitada sai no recibo. Proventos entram na base do INSS; descontos saem do líquido.
 
+## Adiantamentos
+
+Em cada funcionária, **+ Adiantamento** registra um valor pago antes do fechamento (data, valor e observação). Cada adiantamento gera um **recibo próprio em PDF**, em duas vias na mesma folha A4, e é abatido automaticamente do salário líquido na folha do mês. Adiantamentos não alteram a base do INSS.
+
 ## Funcionárias sem registro
 
 Para quem não é registrada, o app não calcula INSS, FGTS nem guia DAE. Salário, vale-transporte, 13º e férias com 1/3 são calculados normalmente.
