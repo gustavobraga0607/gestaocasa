@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Calcula salário, vale-transporte, 13º, férias, INSS e guia DAE de funcionárias domésticas.">
+<meta name="theme-color" content="#2c49b0">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icons/favicon-64.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Folha da Casa">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Folha da Casa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -135,6 +143,43 @@ table.list th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;col
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:.9rem;z-index:20}
 textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
 @media (max-width:760px){.emp-body{grid-template-columns:1fr}}
+.emp-sw{display:none}
+/* Celular: cabeçalho fixo com o mês, abas embaixo, cada funcionária alterna Resumo / Lançamentos */
+@media (max-width:640px){
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+  .wrap{padding-block:0 calc(84px + env(safe-area-inset-bottom,0px));gap:14px}
+  header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg);flex-wrap:nowrap;padding-block:10px;margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px)));padding-inline:max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+  header.top h1{font-size:1.15rem}
+  header.top .sub{display:none}
+  .monthbar{padding:2px;flex-shrink:0}
+  .monthbar .m{min-width:0;font-size:.95rem;padding-inline:2px}
+  .iconbtn{width:40px;height:40px}
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-bottom:none;border-top:1px solid var(--line);gap:0;
+    padding:0 max(8px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(8px,env(safe-area-inset-left,0px));overflow:visible}
+  nav.tabs button{flex:1;border-bottom:none;border-top:3px solid transparent;padding:12px 4px 14px;font-size:.88rem;white-space:normal;line-height:1.2}
+  nav.tabs button[aria-selected="true"]{border-top-color:var(--accent);color:var(--accent);font-weight:600}
+  input,select,textarea{font-size:16px}
+  button{min-height:40px}
+  .totals{grid-template-columns:1fr;gap:8px}
+  .tile{padding:10px 14px}
+  .tile .v{font-size:1.2rem}
+  .emp-head{padding:12px 14px;flex-direction:column;align-items:stretch;gap:8px}
+  .emp-head h2{font-size:1.15rem}
+  .emp-head .chip{margin-left:6px}
+  .emp-sw{display:grid;grid-template-columns:1fr 1fr;background:var(--sunken);border-radius:10px;padding:3px;gap:3px;order:2}
+  .emp-sw button{border:none;background:transparent;border-radius:8px;padding:8px;font-weight:500;color:var(--muted)}
+  .emp-sw button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+  section.emp[data-view="res"] .emp-body>.adj{display:none}
+  section.emp[data-view="adj"] .emp-body>div:not(.adj){display:none}
+  .emp-body>div{padding:14px}
+  .pay{grid-template-columns:1fr 1fr}
+  .pay .tile.hl{grid-column:1/-1}
+  .direitos{grid-template-columns:1fr}
+  .actions button{flex:1 1 100%}
+  .folha-bar button{width:100%}
+  .card{padding:14px}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -145,7 +190,7 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
   <header class="top">
     <div>
       <h1>Folha da Casa</h1>
-      <div class="muted small">Salário, vale-transporte, 13º, férias e INSS das funcionárias da casa, registradas ou não, calculados a partir das regras que você cadastra.</div>
+      <div class="muted small sub">Salário, vale-transporte, 13º, férias e INSS das funcionárias da casa, registradas ou não, calculados a partir das regras que você cadastra.</div>
     </div>
     <div class="monthbar" role="group" aria-label="Mês de referência">
       <button class="iconbtn" id="prev" aria-label="Mês anterior">‹</button>
@@ -161,6 +206,7 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
   </nav>
 
   <div id="status"></div>
+  <div id="install" hidden></div>
   <main id="view"></main>
   <div class="save" id="saveinfo"></div>
 </div>
@@ -449,6 +495,7 @@ function getAdj(id){S.mes.ajustes=S.mes.ajustes||{};const a=migrarLanc({...NEW_A
 function folhaSalva(){return S.mes&&S.mes.fechada?S.mes.fechada:null}
 function cfgMes(){const f=folhaSalva();return f&&f.cfg?{...DEFAULT_CFG,...f.cfg}:cfg()}
 function empsMes(){const f=folhaSalva();if(f&&f.emps)return Object.entries(f.emps).map(([id,e])=>({id,...NEW_EMP(),...e})).sort((a,b)=>n(a.ordem)-n(b.ordem));return empsAtivas()}
+const empView={};
 function viewMes(){
   const todas=empList(),emps=empsMes(),c=cfgMes(),fs=folhaSalva();
   if(todas.length&&!emps.length)return `<div class="empty"><h2>Ninguém trabalhou em ${MESES[ym.m].toLowerCase()} de ${ym.y}</h2><div class="muted">As datas de admissão e desligamento das funcionárias cadastradas ficam fora deste mês.</div></div>`;
@@ -464,8 +511,8 @@ function viewMes(){
   h+=`</div><div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">`;
   for(const e of emps){
     const a={...NEW_ADJ(),...((S.mes.ajustes||{})[e.id]||{})};
-    h+=`<section class="emp" data-emp="${e.id}">
-      <div class="emp-head"><h2>${esc(e.nome||"Sem nome")}<span class="chip">${esc(e.funcao)}</span>${e.registrada===false?`<span class="chip informal">Sem registro</span>`:`<span class="chip">Registrada</span>`}</h2><span class="muted small num">Salário base ${brl(n(e.salario))}</span></div>
+    h+=`<section class="emp" data-emp="${e.id}" data-view="${empView[e.id]||"res"}">
+      <div class="emp-head"><div class="emp-sw" role="group" aria-label="Mostrar"><button type="button" class="keep" data-act="view" data-v="res" aria-pressed="${(empView[e.id]||"res")==="res"}">Resumo</button><button type="button" class="keep" data-act="view" data-v="adj" aria-pressed="${empView[e.id]==="adj"}">Lançamentos</button></div><h2>${esc(e.nome||"Sem nome")}<span class="chip">${esc(e.funcao)}</span>${e.registrada===false?`<span class="chip informal">Sem registro</span>`:`<span class="chip">Registrada</span>`}</h2><span class="muted small num">Salário base ${brl(n(e.salario))}</span></div>
       <div class="emp-body">
         <div class="adj">
           <div class="label">Lançamentos de ${MESES[ym.m].toLowerCase()}</div>
@@ -939,6 +986,8 @@ view.addEventListener("click",ev=>{
   else if(a==="nodel"){render()}
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
+  else if(a==="view"){const sec=b.closest("[data-emp]");empView[sec.dataset.emp]=b.dataset.v;sec.dataset.view=b.dataset.v;
+    sec.querySelectorAll(".emp-sw button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===b.dataset.v?"true":"false"))}
   else if(a==="pdf"){baixarPDF(b.dataset.id,b)}
   else if(a==="addDx"){const id=b.closest("[data-emp]").dataset.emp;const ad=getAdj(id);const e=empsMes().find(x=>x.id===id)||{dias:[]};
     // sugere o primeiro dia fora da escala ainda não lançado (ex.: sábado)
@@ -986,5 +1035,24 @@ start();
 })();
 </script>
 
+<script>
+/* App instalável: modo offline e convite para instalar na tela inicial */
+(function(){
+  if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("/sw.js").catch(function(){});
+  var box=document.getElementById("install");if(!box)return;
+  var instalado=window.matchMedia("(display-mode: standalone)").matches||navigator.standalone;
+  var fechado=false;try{fechado=localStorage.getItem("folha-install-fechado")==="1"}catch(e){}
+  if(instalado||fechado)return;
+  function mostrar(html){box.innerHTML='<div class="banner info install-bn"><div>'+html+'</div><button type="button" class="ghost" data-x="1" aria-label="Fechar aviso">Agora não</button></div>';box.hidden=false;
+    box.querySelector("[data-x]").onclick=function(){box.hidden=true;try{localStorage.setItem("folha-install-fechado","1")}catch(e){}}}
+  var pedido=null;
+  window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();pedido=e;
+    mostrar('<b>Use como aplicativo.</b> Instale a Folha da Casa na tela inicial do celular. <button type="button" class="primary" id="btn-instalar">Instalar</button>');
+    document.getElementById("btn-instalar").onclick=function(){pedido.prompt();pedido.userChoice.finally(function(){box.hidden=true})}});
+  var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(ios)mostrar('<b>Use como aplicativo no iPhone:</b> toque em <b>Compartilhar</b> (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>.');
+})();
+</script>
+<style>.install-bn{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.install-bn>div{flex:1 1 220px}.install-bn #btn-instalar{margin-left:6px}</style>
 </body>
 </html>

@@ -47,6 +47,17 @@ Na aba **Cadastros** ficam o nome e o CPF do empregador e os dados de cada funci
 
 Fora do Claude, os dados ficam salvos no navegador (localStorage). Use **Regras gerais → Exportar backup** para guardar uma cópia e **Importar backup** para levar para outro aparelho.
 
+## No celular
+
+O app tem layout próprio para celular: o mês fica fixo no topo, as abas ficam na parte de baixo da tela e cada funcionária alterna entre **Resumo** e **Lançamentos**.
+
+Ele também pode ser instalado na tela inicial e funciona sem internet depois da primeira visita:
+
+- **Android (Chrome):** toque em **Instalar** no aviso do app, ou no menu ⋮ → **Instalar app**.
+- **iPhone (Safari):** toque em **Compartilhar** → **Adicionar à Tela de Início**.
+
+Os dados ficam no aparelho. Para levar os cadastros do computador para o celular, use **Exportar backup** num e **Importar backup** no outro.
+
 ## Como rodar
 
 É uma página estática, sem build: abra `index.html` no navegador ou publique a pasta em qualquer hospedagem estática (Vercel, GitHub Pages, Netlify).
