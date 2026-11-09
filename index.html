@@ -86,6 +86,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 .cal .d.fw{background:var(--warn);color:var(--surface);font-weight:600}
 .cal button.d{font:inherit;font-size:.72rem;padding:0;border:none;cursor:pointer;width:100%}
 .cal button.d:hover{outline:2px solid var(--fg);outline-offset:-2px}
+.cal .d.fora{opacity:.35;text-decoration:line-through}
 .cal .d.fi{background:var(--bad);color:var(--surface);font-weight:600}
 .cal .d.fj{background:var(--sunken);color:var(--fg);border:1px dashed var(--muted)}
 .cal .d.dsr{box-shadow:inset 0 0 0 2px var(--bad);color:var(--bad);font-weight:600}
@@ -163,7 +164,7 @@ const DEFAULT_CFG={
   feriadosExtras:[],
   encargos:{patronal:8,gilrat:0.8,fgts:8,indeniz:3.2}
 };
-const NEW_EMP=()=>({nome:"",funcao:"Empregada doméstica",registrada:true,admissao:"",salario:1621,dias:[1,2,3,4,5],tarifa:5.00,viagensDia:2,
+const NEW_EMP=()=>({nome:"",funcao:"Empregada doméstica",registrada:true,admissao:"",demissao:"",salario:1621,dias:[1,2,3,4,5],tarifa:5.00,viagensDia:2,
   descontaVT:true,descontaINSS:true,trabalhaFeriados:false,jornadaMensal:220,percHE:50,
   adicionalFixo:0,adicionalDesc:"",descontoFixo:0,descontoDesc:"",ordem:Date.now()});
 const NEW_ADJ=()=>({faltasDias:{},horasExtras:0,diasExtras:0,diasFerias:0,outrosAcresc:0,outrosDesc:0,obs:""});
@@ -227,11 +228,20 @@ function feriadosLista(y,cfg){
   return L.sort((a,b)=>a.k<b.k?-1:1);
 }
 function feriados(y,cfg){const F={};feriadosLista(y,cfg).forEach(x=>F[x.k]=x.nome);return F}
+/* Período de vínculo: admissão e desligamento (datas "AAAA-MM-DD"; vazio = sem limite) */
+const dataOk=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||"");
+function noVinculo(emp,k){return !(dataOk(emp.admissao)&&k<emp.admissao)&&!(dataOk(emp.demissao)&&k>emp.demissao)}
+function ativaNoMes(emp,y,m){const ini=`${y}-${String(m+1).padStart(2,"0")}-01`,fim=`${y}-${String(m+1).padStart(2,"0")}-${new Date(y,m+1,0).getDate()}`;
+  return !(dataOk(emp.admissao)&&emp.admissao>fim)&&!(dataOk(emp.demissao)&&emp.demissao<ini)}
+/* Dias do mês com vínculo; mês completo conta 30 (mês comercial) */
+function diasVinculo(emp,y,m){const total=new Date(y,m+1,0).getDate();let c=0;
+  for(let d=1;d<=total;d++)if(noVinculo(emp,key(new Date(y,m,d))))c++;
+  return c===total?30:Math.min(30,c)}
 function diasMes(emp,y,m,cfg){
   const F=feriados(y,cfg),total=new Date(y,m+1,0).getDate(),out=[];
   for(let d=1;d<=total;d++){const dt=new Date(y,m,d),k=key(dt),wd=dt.getDay();
-    const escala=(emp.dias||[]).includes(wd),fer=F[k];
-    out.push({d,wd,k,escala,fer,trabalha:escala&&(!fer||emp.trabalhaFeriados)});}
+    const escala=(emp.dias||[]).includes(wd),fer=F[k],vinc=noVinculo(emp,k);
+    out.push({d,wd,k,escala,fer,fora:!vinc,trabalha:vinc&&escala&&(!fer||emp.trabalhaFeriados)});}
   return out;
 }
 
@@ -242,14 +252,14 @@ function calcINSS(base,tabela){
   return r2(tot);
 }
 /* Avos de 13º no ano: conta o mês com 15 dias ou mais de trabalho desde a admissão */
-function avos13(emp,y){
-  if(!emp.admissao)return 12;
-  const a=new Date(emp.admissao+"T12:00:00");if(isNaN(a))return 12;
-  if(a.getFullYear()<y)return 12;
-  if(a.getFullYear()>y)return 0;
-  const diasNoMes=new Date(y,a.getMonth()+1,0).getDate()-a.getDate()+1;
-  return Math.max(0,12-a.getMonth()-(diasNoMes>=15?0:1));
-}
+function avos13(emp,y){let a=0;for(let m=0;m<12;m++){const total=new Date(y,m+1,0).getDate();let c=0;
+  for(let d=1;d<=total;d++)if(noVinculo(emp,key(new Date(y,m,d))))c++;if(c>=15)a++}return a}
+/* Férias proporcionais no desligamento: meses desde o último aniversário da admissão (fração de 15 dias ou mais conta 1) */
+function avosFeriasSaida(emp){if(!dataOk(emp.admissao)||!dataOk(emp.demissao))return 0;
+  const a=new Date(emp.admissao+"T12:00:00"),dm=new Date(emp.demissao+"T12:00:00");let ini=new Date(a);
+  while(true){const nx=new Date(ini);nx.setFullYear(nx.getFullYear()+1);if(nx>dm)break;ini=nx}
+  let meses=0,cur=new Date(ini);while(true){const nx=new Date(cur);nx.setMonth(nx.getMonth()+1);if(nx>new Date(dm.getTime()+864e5))break;meses++;cur=nx}
+  const resto=Math.round((dm-cur)/864e5)+1;if(resto>=15)meses++;return Math.min(12,meses)}
 /* Próximo vencimento de férias: cada aniversário da admissão completa um período de 12 meses */
 function proxFerias(emp,y,m){
   if(!emp.admissao)return null;const a=new Date(emp.admissao+"T12:00:00");if(isNaN(a))return null;
@@ -262,10 +272,15 @@ function calcular(emp,y,m,adj,cfg){
   adj={...NEW_ADJ(),...(adj||{})};
   const reg=emp.registrada!==false;
   const sal=n(emp.salario);
+  const ymk=`${y}-${String(m+1).padStart(2,"0")}`;
+  const admMes=dataOk(emp.admissao)&&emp.admissao.startsWith(ymk), demMes=dataOk(emp.demissao)&&emp.demissao.startsWith(ymk);
+  const diasPagos=diasVinculo(emp,y,m), salMes=r2(sal/30*diasPagos);
   const dias=diasMes(emp,y,m,cfg);
   const previstos=dias.filter(x=>x.trabalha).length;
   const refY=cfg.vtReferencia==="proximo"?(m===11?y+1:y):y, refM=cfg.vtReferencia==="proximo"?(m+1)%12:m;
-  const diasRef=diasMes(emp,refY,refM,cfg).filter(x=>x.trabalha).length;
+  // Mês da admissão com VT adiantado: paga também os dias deste mês
+  const vtAdm=(cfg.vtReferencia==="proximo"&&admMes)?dias.filter(x=>x.trabalha).length:0;
+  const diasRef=diasMes(emp,refY,refM,cfg).filter(x=>x.trabalha).length+vtAdm;
   // Faltas marcadas no calendário: "i" = sem justificativa (desconta dia + DSR), "j" = justificada (atestado, sem desconto)
   const fd=adj.faltasDias||{};const diasTrab=new Set(dias.filter(x=>x.trabalha).map(x=>x.k));
   const fInj=Object.keys(fd).filter(k=>fd[k]==="i"&&diasTrab.has(k)).sort();
@@ -286,13 +301,13 @@ function calcular(emp,y,m,adj,cfg){
   const vtFerias=Math.round(diasFerias*previstos/new Date(y,m+1,0).getDate());
   const vtDias=Math.max(0,diasRef-faltas-faltasJust-vtFerias+n(adj.diasExtras));
   const vtBruto=r2(vtDias*n(emp.viagensDia)*n(emp.tarifa));
-  const descFaltas=r2(sal/30*faltas), descDSR=r2(Math.min(sal/30*dsrDias,Math.max(0,sal-descFaltas)));
+  const descFaltas=r2(Math.min(sal/30*faltas,salMes)), descDSR=r2(Math.min(sal/30*dsrDias,Math.max(0,salMes-descFaltas)));
   const valorHora=n(emp.jornadaMensal)>0?sal/n(emp.jornadaMensal):0;
   const he=r2(valorHora*(1+n(emp.percHE)/100)*n(adj.horasExtras));
   const adicional=r2(n(emp.adicionalFixo)+n(adj.outrosAcresc));
-  const bruto=r2(sal-descFaltas-descDSR+he+adicional+terco);
+  const bruto=r2(salMes-descFaltas-descDSR+he+adicional+terco);
   const inss=reg&&emp.descontaINSS?calcINSS(Math.max(0,bruto),cfg.inss):0;
-  const vtDesc=emp.descontaVT?r2(Math.min(sal*n(cfg.vtPerc)/100,vtBruto)):0;
+  const vtDesc=emp.descontaVT?r2(Math.min(salMes*n(cfg.vtPerc)/100,vtBruto)):0;
   const outrosDesc=r2(n(emp.descontoFixo)+n(adj.outrosDesc));
   const liquido=r2(bruto-inss-vtDesc-outrosDesc);
   const vtEmpregador=r2(vtBruto-vtDesc);
@@ -303,20 +318,27 @@ function calcular(emp,y,m,adj,cfg){
   const avos=avos13(emp,y), total13=r2(sal/12*avos);
   const p1=r2(total13/2);
   let d13=null;
-  if(m===10&&total13>0){d13={parcela:1,bruto:p1,inss:0,liquido:p1,vence:"30/11",
+  if(demMes&&total13>0){const pago=(m===11&&ativaNoMes(emp,y,10))?p1:0;const base=r2(total13-pago);
+    const i13=reg&&emp.descontaINSS?calcINSS(total13,cfg.inss):0;
+    d13={parcela:"saida",pago,bruto:base,inss:i13,liquido:r2(base-i13),vence:"no acerto",
+    dae:r2(i13+pct(total13,"patronal")+pct(total13,"gilrat")+pct(base,"fgts")+pct(base,"indeniz"))}}
+  else if(m===10&&total13>0){d13={parcela:1,bruto:p1,inss:0,liquido:p1,vence:"30/11",
     dae:r2(pct(p1,"fgts")+pct(p1,"indeniz"))}}
-  if(m===11&&total13>0){const i13=reg&&emp.descontaINSS?calcINSS(total13,cfg.inss):0;
+  else if(m===11&&total13>0){const i13=reg&&emp.descontaINSS?calcINSS(total13,cfg.inss):0;
     d13={parcela:2,bruto:r2(total13-p1),inss:i13,liquido:r2(total13-p1-i13),vence:"20/12",
     dae:r2(i13+pct(total13,"patronal")+pct(total13,"gilrat")+pct(total13-p1,"fgts")+pct(total13-p1,"indeniz"))}}
   const dae=r2(inss+enc.patronal+enc.gilrat+enc.fgts+enc.indeniz);
   const transferir=r2(liquido+vtBruto);
   const pag13=d13?d13.liquido:0, dae13=d13?d13.dae:0;
+  // Desligamento: férias proporcionais + 1/3 (indenizadas, sem INSS)
+  const avosFS=demMes?avosFeriasSaida(emp):0, feriasSaida=r2(sal/12*avosFS*4/3);
   // Reserva mensal sugerida: 1/12 de 13º + 1/12 de férias com 1/3
   const reserva13=r2(sal/12), reservaFerias=r2(sal/12*4/3);
   const reservaEnc=reg?r2((reserva13+reservaFerias)*(n(e.patronal)+n(e.gilrat)+n(e.fgts)+n(e.indeniz))/100):0;
   return {reg,sal,dias,previstos,diasRef,refY,refM,faltas,faltasJust,fInj,fJus,dsr,dsrDias,descDSR,diasFerias,feriasValor,terco,vtFerias,vtDias,vtBruto,descFaltas,valorHora,he,adicional,bruto,inss,vtDesc,outrosDesc,liquido,vtEmpregador,enc,dae,transferir,
     avos,total13,d13,pag13,dae13,reserva13,reservaFerias,reservaEnc,ferias:proxFerias(emp,y,m),
-    custo:r2(liquido+vtBruto+dae+pag13+dae13),adj};
+    admMes,demMes,diasPagos,salMes,avosFS,feriasSaida,
+    custo:r2(liquido+vtBruto+dae+pag13+dae13+feriasSaida),adj};
 }
 
 /* ---------- Persistência ---------- */
@@ -339,6 +361,7 @@ async function delEmp(id){delete S.emps[id];if(mode==="local"){lsSave()}else if(
 
 const mesKey=()=>`${ym.y}-${String(ym.m+1).padStart(2,"0")}`;
 function cfg(){return {...DEFAULT_CFG,...(S.cfg||{})}}
+function empsAtivas(){return empList().filter(e=>ativaNoMes(e,ym.y,ym.m))}
 function empList(){return Object.entries(S.emps).map(([id,e])=>({id,...NEW_EMP(),...e})).sort((a,b)=>n(a.ordem)-n(b.ordem))}
 
 function subscribeMes(){
@@ -386,7 +409,8 @@ function render(){
 }
 
 function viewMes(){
-  const emps=empList(),c=cfg();
+  const todas=empList(),emps=empsAtivas(),c=cfg();
+  if(todas.length&&!emps.length)return `<div class="empty"><h2>Ninguém trabalhou em ${MESES[ym.m].toLowerCase()} de ${ym.y}</h2><div class="muted">As datas de admissão e desligamento das funcionárias cadastradas ficam fora deste mês.</div></div>`;
   if(!emps.length)return `<div class="empty"><h2>Nenhuma funcionária cadastrada</h2><div class="muted">Cadastre a empregada e a babá com salário, dias de trabalho e tarifa do transporte. O cálculo de cada mês sai sozinho.</div><button class="primary" data-act="goFunc">Cadastrar funcionária</button></div>`;
   const F=feriados(ym.y,c);const ferMes=Object.entries(F).filter(([k])=>k.startsWith(mesKey())).sort();
   let h=`<div style="display:flex;flex-direction:column;gap:12px"><div class="totals" id="totals"></div>`;
@@ -430,24 +454,23 @@ function viewMes(){
 
 function updateOutputs(){
   if(tab!=="mes")return;
-  const c=cfg(),emps=empList();let T={liq:0,vt:0,dae:0,custo:0,p13:0,reg:0};
+  const c=cfg(),emps=empsAtivas();let T={liq:0,vt:0,dae:0,custo:0,p13:0,reg:0};
   for(const e of emps){
     const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[e.id],c);
-    T.liq+=r.liquido;T.vt+=r.vtBruto;T.dae+=r.dae+r.dae13;T.custo+=r.custo;T.p13+=r.pag13;if(r.reg)T.reg++;
+    T.liq+=r.liquido;T.vt+=r.vtBruto;T.dae+=r.dae+r.dae13;T.custo+=r.custo;T.p13+=r.pag13+r.feriasSaida;if(r.reg)T.reg++;
     const cal=document.getElementById("cal-"+e.id);
     if(cal){const first=new Date(ym.y,ym.m,1).getDay();let g=DIAS.map(d=>`<div class="h">${d[0]}</div>`).join("");
       for(let i=0;i<first;i++)g+=`<div></div>`;
       const fd=r.adj.faltasDias||{};const dsrK=new Set(r.dsr.map(x=>x.k));
       for(const d of r.dias){let cls=d.fer?(d.trabalha?"fw":"f"):(d.trabalha?"w":"");const st=d.trabalha?fd[d.k]:null;
-        if(st==="i")cls="fi";else if(st==="j")cls="fj";if(dsrK.has(d.k))cls+=" dsr";
+        if(d.fora)cls="fora";if(st==="i")cls="fi";else if(st==="j")cls="fj";if(dsrK.has(d.k))cls+=" dsr";
         const tip=[d.fer,st==="i"?"Falta sem justificativa":st==="j"?"Falta justificada":"",dsrK.has(d.k)?"DSR descontado":""].filter(Boolean).join(" · ");
         g+=d.trabalha?`<button type="button" class="d ${cls}" data-falta="${d.k}" title="${esc(tip)}" aria-label="Dia ${d.d}${tip?": "+esc(tip):""}">${d.d}</button>`:`<div class="d ${cls}" title="${esc(tip)}">${d.d}</div>`}
       cal.innerHTML=g}
     const t=document.getElementById("res-"+e.id);
-    if(t){const ref=MESES[r.refM].toLowerCase()+(r.refY!==ym.y?" "+r.refY:"");
+    if(t){const dm=k=>`${k.slice(8)}/${k.slice(5,7)}`;const ref=MESES[r.refM].toLowerCase()+(r.refY!==ym.y?" "+r.refY:"");
       let rows=`<tr class="sec"><td colspan="2" class="label">Salário</td></tr>
-      <tr><td>Salário base</td><td>${brl(r.sal)}</td></tr>`;
-      const dm=k=>`${k.slice(8)}/${k.slice(5,7)}`;
+      ${r.diasPagos<30?`<tr><td>Salário proporcional <span class="muted small">${r.diasPagos} dia(s) × ${brl(r.sal/30)}</span><div class="muted small">${r.admMes?"Admissão em "+dm(e.admissao):""}${r.admMes&&r.demMes?" · ":""}${r.demMes?"Desligamento em "+dm(e.demissao):""}</div></td><td>${brl(r.salMes)}</td></tr>`:`<tr><td>Salário base</td><td>${brl(r.sal)}</td></tr>`}`;
       if(r.faltas)rows+=`<tr><td>Faltas sem justificativa <span class="muted small">${r.faltas} dia(s) × ${brl(r.sal/30)}</span><div class="muted small">${r.fInj.map(dm).join(", ")}</div></td><td class="neg">${brl(-r.descFaltas)}</td></tr>`;
       if(r.dsrDias)rows+=`<tr><td>DSR perdido <span class="muted small">${r.dsrDias} dia(s) × ${brl(r.sal/30)}</span><div class="muted small">${r.dsr.map(x=>dm(x.k)+" "+esc(x.nome)).join("; ")}</div></td><td class="neg">${brl(-r.descDSR)}</td></tr>`;
       if(r.faltasJust)rows+=`<tr><td>Faltas justificadas <span class="muted small">${r.fJus.map(dm).join(", ")} · sem desconto</span></td><td>${brl(0)}</td></tr>`;
@@ -463,11 +486,15 @@ function updateOutputs(){
       <tr class="sec"><td colspan="2" class="label">Vale-transporte (${ref})</td></tr>
       <tr><td>${r.vtDias} dia(s) × ${n(e.viagensDia)} viagens × ${brl(n(e.tarifa))}<div class="muted small">${r.diasRef} dia(s) de escala${r.faltas+r.faltasJust?` − ${r.faltas+r.faltasJust} falta(s)`:""}${r.vtFerias?` − ${r.vtFerias} em férias`:""}${n(r.adj.diasExtras)?` ${n(r.adj.diasExtras)>0?"+":"−"} ${Math.abs(n(r.adj.diasExtras))} extra(s)`:""}</div></td><td>${brl(r.vtBruto)}</td></tr>
       <tr><td>Parte paga por você</td><td>${brl(r.vtEmpregador)}</td></tr>`;
-      if(r.d13){const d=r.d13;rows+=`<tr class="sec"><td colspan="2" class="label">13º salário · ${d.parcela}ª parcela (pagar até ${d.vence})</td></tr>
-      <tr><td>13º integral <span class="muted small">${r.avos}/12 avos × ${brl(r.sal/12)}</span></td><td>${brl(r.total13)}</td></tr>
-      <tr><td>${d.parcela===1?"1ª parcela (metade, sem descontos)":"2ª parcela (restante)"}</td><td>${brl(d.bruto)}</td></tr>
-      ${d.parcela===2?`<tr><td>INSS sobre o 13º ${r.reg?"":`<span class="muted small">sem registro, não se aplica</span>`}</td><td class="neg">${brl(-d.inss)}</td></tr>`:""}
+      if(r.d13){const d=r.d13;const saida=d.parcela==="saida";rows+=`<tr class="sec"><td colspan="2" class="label">${saida?"13º proporcional · desligamento":`13º salário · ${d.parcela}ª parcela (pagar até ${d.vence})`}</td></tr>
+      <tr><td>13º ${saida?"proporcional":"integral"} <span class="muted small">${r.avos}/12 avos × ${brl(r.sal/12)}</span></td><td>${brl(r.total13)}</td></tr>
+      ${saida?(d.pago?`<tr><td>1ª parcela já paga em novembro</td><td class="neg">${brl(-d.pago)}</td></tr>`:""):`<tr><td>${d.parcela===1?"1ª parcela (metade, sem descontos)":"2ª parcela (restante)"}</td><td>${brl(d.bruto)}</td></tr>`}
+      ${d.parcela!==1?`<tr><td>INSS sobre o 13º ${r.reg?"":`<span class="muted small">sem registro, não se aplica</span>`}</td><td class="neg">${brl(-d.inss)}</td></tr>`:""}
       <tr class="tot"><td>13º a pagar</td><td>${brl(d.liquido)}</td></tr>`}
+      if(r.feriasSaida)rows+=`<tr class="sec"><td colspan="2" class="label">Férias proporcionais · desligamento</td></tr>
+      <tr><td>Férias proporcionais <span class="muted small">${r.avosFS}/12 avos × ${brl(r.sal/12)}</span></td><td>${brl(r.sal/12*r.avosFS)}</td></tr>
+      <tr><td>1/3 de férias</td><td>${brl(r.sal/12*r.avosFS/3)}</td></tr>
+      <tr class="tot"><td>Férias a pagar <span class="muted small">sem INSS</span></td><td>${brl(r.feriasSaida)}</td></tr>`;
       if(r.reg){rows+=`<tr class="sec"><td colspan="2" class="label">Guia DAE (eSocial)</td></tr>
       <tr><td>INSS dela (descontado acima)</td><td>${brl(r.inss)}</td></tr>
       <tr><td>INSS patronal ${n(c.encargos.patronal)}% + GILRAT ${n(c.encargos.gilrat)}%</td><td>${brl(r.enc.patronal+r.enc.gilrat)}</td></tr>
@@ -477,18 +504,19 @@ function updateOutputs(){
       else rows+=`<tr class="sec"><td colspan="2" class="label">Tributos</td></tr><tr><td colspan="2" class="muted small" style="text-align:left;font-family:var(--f-body)">Sem registro: não há INSS, FGTS nem guia DAE. 13º, férias com 1/3 e vale-transporte são pagos normalmente.</td></tr>`;
       t.innerHTML=rows}
     const p=document.getElementById("pay-"+e.id);
-    if(p)p.innerHTML=`<div class="tile hl"><span class="label">Pagar a ela</span><span class="v">${brl(r.transferir+r.pag13)}</span><span class="muted small">líquido + VT${r.pag13?" + 13º":""}</span></div>
+    if(p)p.innerHTML=`<div class="tile hl"><span class="label">Pagar a ela</span><span class="v">${brl(r.transferir+r.pag13+r.feriasSaida)}</span><span class="muted small">líquido + VT${r.pag13?" + 13º":""}${r.feriasSaida?" + férias":""}</span></div>
       ${r.reg?`<div class="tile"><span class="label">Guia DAE</span><span class="v">${brl(r.dae+r.dae13)}</span><span class="muted small">vence dia 20</span></div>`:`<div class="tile"><span class="label">Tributos</span><span class="v">${brl(0)}</span><span class="muted small">sem registro</span></div>`}
       <div class="tile"><span class="label">Custo total</span><span class="v">${brl(r.custo)}</span><span class="muted small">no mês</span></div>`;
     const dr=document.getElementById("dir-"+e.id);
-    if(dr){const f=r.ferias;const fmt=d=>d.toLocaleDateString("pt-BR");
+    if(dr)dr.hidden=r.demMes;
+    if(dr&&!r.demMes){const f=r.ferias;const fmt=d=>d.toLocaleDateString("pt-BR");
       dr.innerHTML=`<div class="head label">Direitos de ${esc(e.nome||"funcionária")}</div>
       <div><span class="muted small">13º de ${ym.y}</span><span class="v">${brl(r.total13)}</span><span class="muted small">${r.avos}/12 avos · 1ª até 30/11, 2ª até 20/12</span></div>
       <div><span class="muted small">Férias completas</span><span class="v">${brl(r.sal*4/3)}</span><span class="muted small">30 dias + 1/3 · ${f?`período vence em ${fmt(f.vence)}, tirar até ${fmt(f.limite)}`:"informe a admissão para ver as datas"}</span></div>
       <div><span class="muted small">Guardar por mês</span><span class="v">${brl(r.reserva13+r.reservaFerias+r.reservaEnc)}</span><span class="muted small">${brl(r.reserva13)} p/ 13º + ${brl(r.reservaFerias)} p/ férias${r.reservaEnc?` + ${brl(r.reservaEnc)} encargos`:""}</span></div>`}
   }
   const tt=document.getElementById("totals");
-  if(tt)tt.innerHTML=`<div class="tile hl"><span class="label">Total a pagar às funcionárias</span><span class="v">${brl(T.liq+T.vt+T.p13)}</span><span class="muted small">${brl(T.liq)} salários + ${brl(T.vt)} VT${T.p13?` + ${brl(T.p13)} 13º`:""}</span></div>
+  if(tt)tt.innerHTML=`<div class="tile hl"><span class="label">Total a pagar às funcionárias</span><span class="v">${brl(T.liq+T.vt+T.p13)}</span><span class="muted small">${brl(T.liq)} salários + ${brl(T.vt)} VT${T.p13?` + ${brl(T.p13)} 13º/férias`:""}</span></div>
     <div class="tile"><span class="label">Guias DAE</span><span class="v">${brl(T.dae)}</span><span class="muted small">${T.reg?"INSS, FGTS e encargos":"nenhuma funcionária registrada"}</span></div>
     <div class="tile"><span class="label">Custo da casa em ${MESES[ym.m].toLowerCase()}</span><span class="v">${brl(T.custo)}</span><span class="muted small">${emps.length} funcionária(s)</span></div>`;
 }
@@ -497,7 +525,7 @@ function recibo(id){
   const e=empList().find(x=>x.id===id);if(!e)return;const c=cfg();const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[id],c);
   const L=(a,b)=>a.padEnd(34,".")+" "+b.padStart(14);
   let t=`RECIBO DE PAGAMENTO — ${MESES[ym.m].toUpperCase()} ${ym.y}\n${e.nome} — ${e.funcao}\n\n`;
-  t+=L("Salário base",brl(r.sal))+"\n";
+  t+=r.diasPagos<30?L(`Salário proporcional (${r.diasPagos} dias)`,brl(r.salMes))+"\n":L("Salário base",brl(r.sal))+"\n";
   if(r.faltas)t+=L(`Faltas (${r.faltas} dia)`,brl(-r.descFaltas))+"\n";
   if(r.dsrDias)t+=L(`DSR perdido (${r.dsrDias} dia)`,brl(-r.descDSR))+"\n";
   if(r.diasFerias)t+=L(`1/3 de férias (${r.diasFerias} dias)`,brl(r.terco))+"\n";
@@ -508,8 +536,9 @@ function recibo(id){
   if(r.outrosDesc)t+=L(e.descontoDesc||"Outros descontos",brl(-r.outrosDesc))+"\n";
   t+=L("SALÁRIO LÍQUIDO",brl(r.liquido))+"\n\n";
   t+=L(`Vale-transporte (${r.vtDias} dias)`,brl(r.vtBruto))+"\n";
-  if(r.d13){t+=L(`13º salário – ${r.d13.parcela}ª parcela`,brl(r.d13.bruto))+"\n";if(r.d13.inss)t+=L("INSS sobre 13º",brl(-r.d13.inss))+"\n"}
-  t+=L("TOTAL RECEBIDO",brl(r.transferir+r.pag13))+"\n";
+  if(r.feriasSaida)t+=L(`Férias proporcionais + 1/3 (${r.avosFS}/12)`,brl(r.feriasSaida))+"\n";
+  if(r.d13){t+=L(r.d13.parcela==="saida"?`13º proporcional (${r.avos}/12)`:`13º salário – ${r.d13.parcela}ª parcela`,brl(r.d13.bruto))+"\n";if(r.d13.inss)t+=L("INSS sobre 13º",brl(-r.d13.inss))+"\n"}
+  t+=L("TOTAL RECEBIDO",brl(r.transferir+r.pag13+r.feriasSaida))+"\n";
   if(r.adj.obs)t+=`\nObs.: ${r.adj.obs}\n`;
   t+=`\nDeclaro ter recebido a importância acima.\n\n______________________________\n${e.nome}\nData: ___/___/______`;
   const box=document.getElementById("rec-"+id);
@@ -531,6 +560,7 @@ function viewFunc(){
         ${f("salario","Salário mensal (R$)",'type="number" step="0.01" min="0"')}
         <div class="field"><label for="e-${e.id}-reg">Vínculo</label><select id="e-${e.id}-reg" data-emp-reg="1"><option value="1" ${e.registrada!==false?"selected":""}>Registrada no eSocial</option><option value="0" ${e.registrada===false?"selected":""}>Sem registro</option></select></div>
         ${f("admissao","Data de admissão",'type="date"')}
+        ${f("demissao","Data de desligamento",'type="date"')}
       </div>
       ${e.registrada===false?`<div class="banner warn small">Sem registro: o app não calcula INSS, FGTS nem guia DAE. Salário, vale-transporte, 13º e férias com 1/3 são calculados normalmente.</div>`:""}
       <div class="field"><span class="label">Dias que trabalha</span><div class="days">${DIAS.map((d,i)=>`<label><input type="checkbox" data-dia="${i}" ${e.dias.includes(i)?"checked":""}>${d}</label>`).join("")}</div></div>
