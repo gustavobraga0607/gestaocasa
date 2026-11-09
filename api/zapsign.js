@@ -18,26 +18,32 @@ async function supa(caminho, { method = "GET", body, jwt, chave, prefer } = {}) 
   const key = chave || SUPA_ANON;
   const headers = { apikey: key, Authorization: "Bearer " + (jwt || key), "Content-Type": "application/json" };
   if (prefer) headers.Prefer = prefer;
-  const r = await fetch(SUPA_URL + caminho, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  let r;
+  try { r = await fetch(SUPA_URL + caminho, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }); }
+  catch (e) { throw new Erro(502, "Não foi possível conectar ao banco de dados."); }
   const txt = await r.text();
   let dados = null; try { dados = txt ? JSON.parse(txt) : null; } catch (e) { dados = txt; }
   if (!r.ok) throw new Erro(r.status >= 500 ? 502 : r.status, "Banco de dados: " + ((dados && (dados.message || dados.msg)) || r.status));
   return dados;
 }
 const secreta = () => {
-  const k = process.env.SUPABASE_SECRET_KEY;
+  const k = (process.env.SUPABASE_SECRET_KEY || "").trim().split(/\s+/)[0];
   if (!k) throw new Erro(500, "Falta configurar SUPABASE_SECRET_KEY na Vercel.");
   return k;
 };
 const db = (caminho, opt = {}) => supa(caminho, { ...opt, chave: secreta() });
 
 async function zap(caminho, { method = "GET", body } = {}) {
-  const t = process.env.ZAPSIGN_TOKEN;
+  // Usa só o primeiro trecho do valor (tolera espaços, quebras de linha ou token colado duas vezes)
+  const t = (process.env.ZAPSIGN_TOKEN || "").trim().split(/\s+/)[0];
   if (!t) throw new Erro(500, "Falta configurar ZAPSIGN_TOKEN na Vercel.");
-  const r = await fetch(ZAP_BASE + caminho, {
-    method, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  let r;
+  try {
+    r = await fetch(ZAP_BASE + caminho, {
+      method, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+  } catch (e) { throw new Erro(502, "Não foi possível conectar à ZapSign."); }
   const txt = await r.text();
   let dados = null; try { dados = txt ? JSON.parse(txt) : null; } catch (e) { dados = txt; }
   if (!r.ok) throw new Erro(502, "ZapSign: " + ((dados && (dados.detail || dados.message || JSON.stringify(dados))) || r.status));
@@ -164,8 +170,8 @@ async function arquivo(req, b) {
 // Verificação da configuração: só leituras, nada é criado. Não devolve dados, apenas se cada chave funciona.
 async function teste() {
   const out = { ok: true, zapsign: !!process.env.ZAPSIGN_TOKEN, supabase: !!process.env.SUPABASE_SECRET_KEY, sandbox: process.env.ZAPSIGN_SANDBOX === "1" };
-  if (out.zapsign) { try { await zap("/docs/?page=1"); out.zapsign_ok = true; } catch (e) { out.zapsign_ok = false; out.zapsign_erro = e.message.slice(0, 120); } }
-  if (out.supabase) { try { await db("/rest/v1/recibos_publicados?select=id&limit=1"); out.supabase_ok = true; } catch (e) { out.supabase_ok = false; out.supabase_erro = e.message.slice(0, 120); } }
+  if (out.zapsign) { try { await zap("/docs/?page=1"); out.zapsign_ok = true; } catch (e) { out.zapsign_ok = false; out.zapsign_erro = e instanceof Erro ? e.message.slice(0, 120) : "erro inesperado"; } }
+  if (out.supabase) { try { await db("/rest/v1/recibos_publicados?select=id&limit=1"); out.supabase_ok = true; } catch (e) { out.supabase_ok = false; out.supabase_erro = e instanceof Erro ? e.message.slice(0, 120) : "erro inesperado"; } }
   return out;
 }
 
@@ -186,6 +192,6 @@ module.exports = async (req, res) => {
     }
     res.status(200).json(out);
   } catch (e) {
-    res.status(e.status || 500).json({ erro: e.message || "Erro inesperado." });
+    res.status(e instanceof Erro ? e.status : 500).json({ erro: e instanceof Erro ? e.message : "Erro inesperado no servidor do app." });
   }
 };
