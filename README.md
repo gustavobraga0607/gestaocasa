@@ -18,6 +18,14 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Férias** com 1/3, data de vencimento do período e quanto guardar por mês para 13º e férias.
 - **Recibo em PDF** no formato de holerite, em duas vias (empregador e funcionária), com proventos e descontos, valor por extenso e linhas de assinatura. Também dá para copiar o recibo em texto.
 
+## Salvar a folha
+
+Depois de conferir o mês, clique em **Salvar folha**. Os valores ficam congelados (mesmo que você mude salário ou regras depois) e os campos do mês ficam travados. Para mexer, clique em **Editar folha**: a folha volta a usar os cadastros e regras atuais.
+
+## Lançamentos avulsos
+
+Cada funcionária tem uma lista livre de proventos e descontos do mês (gratificação, adiantamento, empréstimo etc.). A descrição digitada sai no recibo. Proventos entram na base do INSS; descontos saem do líquido.
+
 ## Funcionárias sem registro
 
 Para quem não é registrada, o app não calcula INSS, FGTS nem guia DAE. Salário, vale-transporte, 13º e férias com 1/3 são calculados normalmente.
@@ -25,6 +33,10 @@ Para quem não é registrada, o app não calcula INSS, FGTS nem guia DAE. Salár
 ## Feriados
 
 Todos os feriados nacionais entram automaticamente, inclusive os móveis (calculados a partir da Páscoa). O estado padrão é o Distrito Federal, e dá para trocar para qualquer um dos 27 estados, com os feriados da capital. Carnaval e Corpus Christi vêm ligados; Quarta-feira de Cinzas e as vésperas de Natal e Ano-Novo podem ser ligadas em **Regras gerais**.
+
+## Cadastros
+
+Na aba **Cadastros** ficam o nome e o CPF do empregador e os dados de cada funcionária, incluindo CPF, que preenchem o recibo. O CPF é formatado e conferido automaticamente.
 
 ## Onde os dados ficam
 
