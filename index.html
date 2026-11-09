@@ -994,7 +994,7 @@ function desenharVia(doc,e,r,c,via){
   T("RECIBO DE PAGAMENTO",M,y,{b:1,s:17});
   T(via,W-M,y-6,{s:8,c:MUT,a:"right"});
   T(`${MESES[ym.m]} de ${ym.y}`,W-M,y,{b:1,s:12,c:AC,a:"right"});
-  T(r.reg?"Empregada doméstica registrada no eSocial":"Trabalho doméstico sem registro",M,y+6,{s:8.5,c:MUT});
+  if(r.reg)T("Empregada doméstica registrada no eSocial",M,y+6,{s:8.5,c:MUT});
   y+=13;
   const bw=(CW-6)/2;
   const caixa=(x,titulo,linhas)=>{doc.setDrawColor(...LN);doc.setLineWidth(.3);doc.roundedRect(x,y,bw,25,2,2,"S");
