@@ -19,6 +19,23 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Férias** com 1/3, data de vencimento do período e quanto guardar por mês para 13º e férias.
 - **Recibo em PDF** no formato de holerite, em duas vias (empregador e funcionária), com proventos e descontos, valor por extenso e linhas de assinatura. Também dá para copiar o recibo em texto.
 
+## Acesso da funcionária e assinatura (ZapSign)
+
+- Em **Cadastros**, cada funcionária com CPF ganha o bloco **Acesso da funcionária ao app**: o empregador cria a senha (o app sugere uma) e passa para ela. Também dá para trocar a senha ou bloquear o acesso.
+- A funcionária abre o app, escolhe **Sou funcionária** e entra com CPF e senha. Ela vê **só o recibo do último mês publicado** e mais nada.
+- Ao **Salvar folha**, uma janela avisa que o recibo ficará disponível para ela. O recibo (com os recibos de adiantamento do mês) vai para assinatura na ZapSign, com **selfie**.
+- O status aparece na folha: aguardando, assinado (com o PDF assinado) ou recusado. **Editar folha** cancela as assinaturas pendentes daquele mês.
+- O app não cria nem altera webhooks na ZapSign: ele consulta o status pela API. Os documentos ficam na pasta `/Folha da Casa/` e têm `external_id` começando com `folhadacasa:`.
+
+### Configuração
+
+1. No Supabase, rode `supabase/funcionarias.sql` no SQL Editor (depois do `schema.sql`).
+2. Na Vercel, em **Settings → Environment Variables**, cadastre:
+   - `ZAPSIGN_TOKEN`: token de API da ZapSign.
+   - `SUPABASE_SECRET_KEY`: chave secreta (service_role) do Supabase.
+   - Opcional: `ZAPSIGN_SANDBOX=1` para testar no ambiente de testes da ZapSign (com token de sandbox).
+3. Faça um novo deploy para as variáveis valerem.
+
 ## Recibos de vários meses
 
 Na aba **Recibos**, escolha o período (de/até, até 36 meses) e as funcionárias. A prévia mostra cada mês com o total recebido e se a folha está salva. **Gerar PDF** cria um único arquivo com uma página de resumo (opcional), os recibos de cada mês em uma ou duas vias e os recibos de adiantamento (opcional). Meses com a folha salva usam os valores congelados; os demais usam os cadastros e regras atuais.
