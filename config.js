@@ -3,6 +3,6 @@
 // pessoa ver as casas às quais tem acesso.
 // Deixe em branco para usar o app só com os dados salvos no navegador.
 window.FOLHA_NUVEM = {
-  url: "",
-  anonKey: ""
+  url: "https://nhldtadtnpzlytdlxtxb.supabase.co",
+  anonKey: "sb_publishable_n5AaVvDdhfxb7jMFBp9lDA_Oc6yHVUi"
 };
