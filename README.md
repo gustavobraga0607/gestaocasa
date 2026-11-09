@@ -28,6 +28,10 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - O status aparece na folha: a assinatura dela (aguardando, assinado ou recusado), o seu visto (com o botão **Dar visto**) e o PDF assinado. **Editar folha** cancela as assinaturas pendentes daquele mês.
 - O app não cria nem altera webhooks na ZapSign: ele consulta o status pela API. Os documentos ficam na pasta `/Folha da Casa/` e têm `external_id` começando com `folhadacasa:`.
 
+- Em **Cadastros**, cada funcionária com acesso tem **Documentos para assinatura**: escolha o tipo (termo de rescisão, aviso prévio, pedido de demissão, recibo de férias, contrato ou outro), confira o título e anexe o PDF (até 3 MB). Ele vai para a ZapSign com as mesmas regras do recibo (selfie dela e visto do empregador) e fica disponível para ela até assinar e por mais 15 dias.
+- **Documentos de rescisão** (termo de rescisão, aviso prévio e pedido de demissão) só podem ser assinados depois que todos os recibos dela estiverem assinados. A regra é aplicada no servidor: o link de assinatura só é liberado quando não há recibo pendente.
+- Um documento ainda não assinado pode ter o envio cancelado. **Editar folha** nunca cancela documentos, só os recibos do mês.
+
 ### Configuração
 
 1. No Supabase, rode `supabase/funcionarias.sql` no SQL Editor (depois do `schema.sql`).

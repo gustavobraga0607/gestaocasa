@@ -11,6 +11,9 @@ const ZAP_BASE = process.env.ZAPSIGN_SANDBOX === "1"
   ? "https://sandbox.api.zapsign.com.br/api/v1"
   : "https://api.zapsign.com.br/api/v1";
 const PASTA = "/Folha da Casa/";
+// Documentos de rescisão: só podem ser assinados depois que todos os recibos estiverem assinados
+const TIPOS_RESCISAO = ["rescisao", "aviso", "demissao"];
+const LINK_ZAP = process.env.ZAPSIGN_SANDBOX === "1" ? "https://sandbox.app.zapsign.com.br/verificar/" : "https://app.zapsign.com.br/verificar/";
 
 class Erro extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 
@@ -84,52 +87,44 @@ async function sincronizar(rec) {
   return novo;
 }
 
+// Cria o documento na ZapSign: funcionária (selfie) + empregador (visto, sem selfie)
+async function criarDocZap({ titulo, externo, pdf_base64, nome, empregador_nome, app_url }) {
+  const volta = (app_url || "").startsWith("https://") ? app_url : undefined;
+  return zap("/docs/", {
+    method: "POST",
+    body: {
+      name: titulo.slice(0, 250),
+      base64_pdf: pdf_base64,
+      lang: "pt-br",
+      disable_signer_emails: true,
+      folder_path: PASTA,
+      external_id: externo.slice(0, 250),
+      brand_primary_color: "#2c49b0",
+      signers: [{
+        name: nome, auth_mode: "assinaturaTela", require_selfie_photo: true, require_document_photo: false,
+        send_automatic_email: false, send_automatic_whatsapp: false, lock_name: true, qualification: "empregada", redirect_link: volta
+      }, {
+        name: (empregador_nome || "Empregador").slice(0, 200), auth_mode: "assinaturaTela", require_selfie_photo: false, require_document_photo: false,
+        send_automatic_email: false, send_automatic_whatsapp: false, lock_name: true, qualification: "empregador (visto)",
+        redirect_link: volta ? volta.replace("assinado=1", "visto=1") : undefined
+      }]
+    }
+  });
+}
+
 async function publicar(req, b) {
   const { casa_id, func_id, competencia, nome, dados, pdf_base64, app_url, empregador_nome } = b;
   if (!casa_id || !func_id || !/^\d{4}-\d{2}$/.test(competencia || "") || !pdf_base64) throw new Erro(400, "Dados do recibo incompletos.");
   if (pdf_base64.length > 4_000_000) throw new Erro(413, "PDF grande demais.");
   const user = await empregador(req, casa_id);
   // Cancela versões pendentes do mesmo mês (o recibo foi refeito)
-  const antigos = await db(`/rest/v1/recibos_publicados?casa_id=eq.${casa_id}&func_id=eq.${encodeURIComponent(func_id)}&competencia=eq.${competencia}&status=eq.pendente&select=id,zapsign_doc`);
+  const antigos = await db(`/rest/v1/recibos_publicados?casa_id=eq.${casa_id}&func_id=eq.${encodeURIComponent(func_id)}&competencia=eq.${competencia}&status=eq.pendente&dados->>tipo=is.null&select=id,zapsign_doc`);
   for (const a of antigos) {
     if (a.zapsign_doc) await zap("/docs/" + a.zapsign_doc + "/", { method: "DELETE" }).catch(() => {});
     await db("/rest/v1/recibos_publicados?id=eq." + a.id, { method: "PATCH", body: { status: "cancelado" } });
   }
   const [ano, mes] = competencia.split("-");
-  const doc = await zap("/docs/", {
-    method: "POST",
-    body: {
-      name: `Recibo ${mes}/${ano} - ${nome}`.slice(0, 250),
-      base64_pdf: pdf_base64,
-      lang: "pt-br",
-      disable_signer_emails: true,
-      folder_path: PASTA,
-      external_id: `folhadacasa:${casa_id}:${func_id}:${competencia}`,
-      brand_primary_color: "#2c49b0",
-      signers: [{
-        name: nome,
-        auth_mode: "assinaturaTela",
-        require_selfie_photo: true,
-        require_document_photo: false,
-        send_automatic_email: false,
-        send_automatic_whatsapp: false,
-        lock_name: true,
-        qualification: "empregada",
-        redirect_link: (app_url || "").startsWith("https://") ? app_url : undefined
-      }, {
-        // Visto do empregador: assinatura na tela, sem selfie nem foto de documento
-        name: (empregador_nome || "Empregador").slice(0, 200),
-        auth_mode: "assinaturaTela",
-        require_selfie_photo: false,
-        require_document_photo: false,
-        send_automatic_email: false,
-        send_automatic_whatsapp: false,
-        lock_name: true,
-        qualification: "empregador (visto)",
-        redirect_link: (app_url || "").startsWith("https://") ? app_url.replace("assinado=1", "visto=1") : undefined
-      }]
-    }
-  });
+  const doc = await criarDocZap({ titulo: `Recibo ${mes}/${ano} - ${nome}`, externo: `folhadacasa:${casa_id}:${func_id}:${competencia}`, pdf_base64, nome, empregador_nome, app_url });
   const signer = (doc.signers || [])[0] || {};
   const signerEmp = (doc.signers || [])[1] || {};
   const [rec] = await db("/rest/v1/recibos_publicados", {
@@ -140,10 +135,55 @@ async function publicar(req, b) {
   return { recibo: rec };
 }
 
+// Documento avulso (rescisão, aviso prévio, férias...) enviado pelo empregador
+async function documento(req, b) {
+  const { casa_id, func_id, titulo, tipo, nome, empregador_nome, pdf_base64, app_url } = b;
+  if (!casa_id || !func_id || !titulo || !pdf_base64) throw new Erro(400, "Dados do documento incompletos.");
+  if (pdf_base64.length > 4_000_000) throw new Erro(413, "PDF grande demais. Use um arquivo de até 3 MB.");
+  const user = await empregador(req, casa_id);
+  const agora = new Date();
+  const competencia = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
+  const doc = await criarDocZap({ titulo: `${titulo} - ${nome}`, externo: `folhadacasa:doc:${casa_id}:${func_id}:${agora.getTime()}`, pdf_base64, nome, empregador_nome, app_url });
+  const s0 = (doc.signers || [])[0] || {}, s1 = (doc.signers || [])[1] || {};
+  const rescisao = TIPOS_RESCISAO.includes(tipo);
+  const [rec] = await db("/rest/v1/recibos_publicados", {
+    method: "POST", prefer: "return=representation",
+    // Documento de rescisão: o link não fica disponível para a funcionária; é liberado por "link_doc"
+    body: { casa_id, func_id, competencia, dados: { tipo: "documento", subtipo: tipo || "", rescisao, titulo, enviado_em: agora.toISOString() },
+      status: "pendente", zapsign_doc: doc.token, sign_url: rescisao ? null : s0.sign_url, func_signer: s0.token, emp_signer: s1.token, emp_sign_url: s1.sign_url, criado_por: user.id }
+  });
+  return { documento: { id: rec.id, status: rec.status } };
+}
+
+// Funcionária pede o link de um documento de rescisão: só sai se não houver recibo sem assinatura
+async function linkDoc(b) {
+  const sess = await recibosDaSessao(b.sessao);
+  const alvo = (sess.recibos || []).find(x => x.id === b.id);
+  if (!alvo || alvo.status !== "pendente") throw new Erro(404, "Documento não encontrado.");
+  const [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${encodeURIComponent(b.id)}&select=id,casa_id,func_id,func_signer,sign_url,dados`);
+  if (!rec) throw new Erro(404, "Documento não encontrado.");
+  if (rec.sign_url) return { url: rec.sign_url };
+  const abertos = await db(`/rest/v1/recibos_publicados?casa_id=eq.${rec.casa_id}&func_id=eq.${encodeURIComponent(rec.func_id)}&status=in.(pendente,recusado)&dados->>tipo=is.null&select=id`);
+  if (abertos.length) throw new Erro(409, abertos.length === 1 ? "Assine primeiro o recibo pendente. Depois este documento é liberado." : `Assine primeiro os ${abertos.length} recibos pendentes. Depois este documento é liberado.`);
+  if (!rec.func_signer) throw new Erro(404, "Link de assinatura indisponível.");
+  return { url: LINK_ZAP + rec.func_signer };
+}
+
+async function cancelarDoc(req, b) {
+  const { casa_id, id } = b;
+  await empregador(req, casa_id);
+  const [rec] = await db(`/rest/v1/recibos_publicados?id=eq.${encodeURIComponent(id)}&casa_id=eq.${casa_id}&select=id,zapsign_doc,status`);
+  if (!rec) throw new Erro(404, "Documento não encontrado.");
+  if (rec.status !== "pendente") throw new Erro(409, "Este documento já foi assinado ou recusado e não pode ser cancelado.");
+  if (rec.zapsign_doc) await zap("/docs/" + rec.zapsign_doc + "/", { method: "DELETE" }).catch(() => {});
+  await db("/rest/v1/recibos_publicados?id=eq." + rec.id, { method: "PATCH", body: { status: "cancelado" } });
+  return { ok: true };
+}
+
 async function cancelar(req, b) {
   const { casa_id, competencia } = b;
   await empregador(req, casa_id);
-  const pend = await db(`/rest/v1/recibos_publicados?casa_id=eq.${casa_id}&competencia=eq.${competencia}&status=eq.pendente&select=id,zapsign_doc`);
+  const pend = await db(`/rest/v1/recibos_publicados?casa_id=eq.${casa_id}&competencia=eq.${competencia}&status=eq.pendente&dados->>tipo=is.null&select=id,zapsign_doc`);
   for (const a of pend) {
     if (a.zapsign_doc) await zap("/docs/" + a.zapsign_doc + "/", { method: "DELETE" }).catch(() => {});
     await db("/rest/v1/recibos_publicados?id=eq." + a.id, { method: "PATCH", body: { status: "cancelado" } });
@@ -211,6 +251,9 @@ module.exports = async (req, res) => {
     switch (b.acao) {
       case "publicar": out = await publicar(req, b); break;
       case "cancelar": out = await cancelar(req, b); break;
+      case "documento": out = await documento(req, b); break;
+      case "cancelar_doc": out = await cancelarDoc(req, b); break;
+      case "link_doc": out = await linkDoc(b); break;
       case "status": out = await statusCasa(req, b); break;
       case "status_func": out = await statusFunc(b); break;
       case "arquivo": out = await arquivo(req, b); break;

@@ -101,6 +101,10 @@ body.tela-login header .monthbar{display:none}
 details summary{cursor:pointer;color:var(--accent);font-size:.9rem;padding:4px 0}
 .tot-func{border-top:1.5px solid var(--fg);padding-top:8px}
 .sig+.sig{margin-top:4px}
+.doc-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
+.doc-st{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.doc-acoes{display:flex;gap:4px;flex-shrink:0}
+.docs-lista li{align-items:flex-start}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -656,14 +660,14 @@ const cpfOculto=c=>c&&c.length===11?`${c.slice(0,3)}.***.***-${c.slice(9)}`:"";
 async function carregarAcessos(){if(!sb||!nuvem)return;const {data,error}=await sb.rpc("acessos_da_casa",{p_casa:nuvem.casa.id});
   if(error){acessos=null;return}acessos={};(data||[]).forEach(a=>acessos[a.func_id]=a);if(!appHasFocus())render()}
 async function carregarPublicados(){if(!sb||!nuvem)return;
-  const {data,error}=await sb.from("recibos_publicados").select("id,func_id,competencia,status,assinado_em,emp_sign_url,emp_assinado_em,criado_em").eq("casa_id",nuvem.casa.id).neq("status","cancelado").order("criado_em",{ascending:false}).limit(300);
+  const {data,error}=await sb.from("recibos_publicados").select("id,func_id,competencia,status,assinado_em,emp_sign_url,emp_assinado_em,criado_em,tipo:dados->>tipo,titulo:dados->>titulo,rescisao:dados->>rescisao").eq("casa_id",nuvem.casa.id).neq("status","cancelado").order("criado_em",{ascending:false}).limit(300);
   if(!error){publicados=data||[];if(!appHasFocus())render()}}
 async function sincronizarAssinaturas(forcar){
   if(!nuvem||(!forcar&&Date.now()-ultimaSync<60000))return;ultimaSync=Date.now();
   if(!publicados.some(p=>p.status==="pendente"||(p.status==="assinado"&&p.emp_sign_url&&!p.emp_assinado_em)))return;
   try{await api({acao:"status",casa_id:nuvem.casa.id});await carregarPublicados()}catch(e){}
 }
-function publicadoDe(funcId,comp){return publicados.find(p=>p.func_id===funcId&&p.competencia===comp)}
+function publicadoDe(funcId,comp){return publicados.find(p=>p.tipo!=="documento"&&p.func_id===funcId&&p.competencia===comp)}
 
 function chipAssinatura(e){
   if(!nuvem)return "";
@@ -732,8 +736,8 @@ async function pedirSalvarFolha(){
 }
 async function pedirEditarFolha(){
   const mes=`${MESES[ym.m].toLowerCase()} de ${ym.y}`;
-  const pend=nuvem?publicados.filter(p=>p.competencia===mesKey()&&p.status==="pendente").length:0;
-  const ass=nuvem?publicados.filter(p=>p.competencia===mesKey()&&p.status==="assinado").length:0;
+  const pend=nuvem?publicados.filter(p=>p.tipo!=="documento"&&p.competencia===mesKey()&&p.status==="pendente").length:0;
+  const ass=nuvem?publicados.filter(p=>p.tipo!=="documento"&&p.competencia===mesKey()&&p.status==="assinado").length:0;
   let html=`<p>A folha de ${mes} volta a usar os cadastros e regras atuais.</p>`;
   if(pend)html+=`<div class="banner warn">${pend} recibo(s) aguardando assinatura serão <b>cancelados na ZapSign</b> e deixam de aparecer para a funcionária até você salvar de novo.</div>`;
   if(ass)html+=`<p class="muted small">${ass} recibo(s) já assinados continuam guardados. Se você salvar de novo, um novo recibo vai para assinatura.</p>`;
@@ -804,10 +808,27 @@ function viewFuncionaria(){
   let h=`<div class="func-wrap"><section class="card"><div class="conta-linha"><div><div class="muted small">Olá,</div><h2>${esc(d.nome||"")}</h2></div><button type="button" data-act="sairFunc">Sair</button></div></section>`;
   if(lista===undefined)return h+`<section class="card"><div class="muted">Carregando seus recibos…</div></section></div>`;
   if(!lista.length)return h+`<section class="card empty-func"><h2>Nenhum recibo disponível</h2><div class="muted">Quando seu empregador salvar a folha do mês, o recibo aparece aqui para você conferir e assinar. Recibos assinados ficam disponíveis por 15 dias.</div></section></div>`;
-  const pend=lista.filter(r=>r.status==="pendente").length;
-  if(pend)h+=`<div class="banner info">${pend===1?"Você tem 1 recibo para assinar.":`Você tem ${pend} recibos para assinar.`}</div>`;
+  const ehDoc=r=>r.dados&&r.dados.tipo==="documento";
+  const recs=lista.filter(r=>!ehDoc(r)),docs=lista.filter(ehDoc);
+  const pendRec=recs.filter(r=>r.status==="pendente"||r.status==="recusado").length,pendDoc=docs.filter(r=>r.status==="pendente").length;
+  const partes=[];if(pendRec)partes.push(pendRec===1?"1 recibo":`${pendRec} recibos`);if(pendDoc)partes.push(pendDoc===1?"1 documento":`${pendDoc} documentos`);
+  if(partes.length)h+=`<div class="banner info">Você tem ${partes.join(" e ")} para assinar.</div>`;
   const fmt=x=>new Date(x).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
-  for(const r of lista){
+  for(const r of docs){
+    const D=r.dados||{};
+    const st=r.status==="assinado"?`<span class="chip" style="background:var(--good-soft);color:var(--good)">Assinado</span>`:r.status==="recusado"?`<span class="chip informal">Recusado</span>`:`<span class="chip informal">Aguardando sua assinatura</span>`;
+    h+=`<section class="card"><div class="conta-linha"><h2>${esc(D.titulo||"Documento")}</h2>${st}</div>
+      <div class="muted small">Documento enviado pelo seu empregador${D.enviado_em?" em "+new Date(D.enviado_em).toLocaleDateString("pt-BR"):""}.</div>`;
+    if(r.status==="pendente"){
+      if(r.sign_url)h+=`<div class="assinar-box"><a class="btnlike primary-link" href="${esc(r.sign_url)}" target="_blank" rel="noopener">Conferir e assinar o documento</a><div class="muted small">A assinatura é feita no site da ZapSign e pede uma <b>selfie</b>.</div><button type="button" data-act="atualizarFunc">Já assinei, atualizar</button></div>`;
+      else if(pendRec)h+=`<div class="banner warn">Para assinar este documento, assine primeiro ${pendRec===1?"o recibo pendente":`os ${pendRec} recibos pendentes`} abaixo. Depois ele é liberado.</div>`;
+      else h+=`<div class="assinar-box"><span id="doc-link-${r.id}"><button type="button" class="primary" data-act="linkDoc" data-id="${r.id}">Conferir e assinar o documento</button></span><div class="muted small">A assinatura é feita no site da ZapSign e pede uma <b>selfie</b>.</div><button type="button" data-act="atualizarFunc">Já assinei, atualizar</button></div>`;
+    }
+    if(r.status==="assinado")h+=`<div class="assinar-box"><div>✓ Você assinou em ${fmt(r.assinado_em)}. Disponível aqui até ${new Date(r.disponivel_ate).toLocaleDateString("pt-BR")}.</div><span id="pdf-func-${r.id}"><button type="button" class="primary" data-act="baixarFunc" data-id="${r.id}">Baixar documento${r.visto_empregador?" assinado":""}</button></span></div>`;
+    if(r.status==="recusado")h+=`<div class="banner warn">Você recusou este documento. Converse com seu empregador.</div>`;
+    h+=`</section>`;
+  }
+  for(const r of recs){
     const D=r.dados||{},it=D.itens||{prov:[],desc:[],outros:[]};
     const linha=(t,ref,v,cls="")=>`<tr><td>${esc(t)}${ref?` <span class="muted small">${esc(ref)}</span>`:""}</td><td class="${cls}">${brl(v)}</td></tr>`;
     const st=r.status==="assinado"?`<span class="chip" style="background:var(--good-soft);color:var(--good)">Assinado</span>`:r.status==="recusado"?`<span class="chip informal">Recusado</span>`:`<span class="chip informal">Aguardando sua assinatura</span>`;
@@ -831,6 +852,53 @@ function viewFuncionaria(){
     h+=`</section>`;
   }
   return h+`</div>`;
+}
+
+/* ---------- Documentos avulsos para assinatura (rescisão, aviso, férias...) ---------- */
+const TIPOS_DOC=[["rescisao","Termo de rescisão (TRCT)",true],["aviso","Aviso prévio",true],["demissao","Pedido de demissão",true],["ferias","Recibo de férias",false],["contrato","Contrato de trabalho",false],["outro","Outro documento",false]];
+const docUpload={}, docForm={};
+function docsDaFunc(id){return publicados.filter(p=>p.tipo==="documento"&&p.func_id===id)}
+function blocoDocs(e){
+  if(!nuvem||acessos===null)return "";
+  const ac=acessos&&acessos[e.id];const lista=docsDaFunc(e.id);const f=docForm[e.id]||{tipo:"rescisao",titulo:"Termo de rescisão (TRCT)"};
+  const fmtD=d=>d?new Date(d).toLocaleDateString("pt-BR"):"";
+  const recPend=publicados.filter(p=>p.tipo!=="documento"&&p.func_id===e.id&&(p.status==="pendente"||p.status==="recusado")).length;
+  let h=`<div class="acesso-box"><div class="label">Documentos para assinatura</div>
+    <div class="muted small">Envie um PDF (rescisão, aviso prévio, férias, contrato) para ${esc(e.nome||"ela")} assinar com selfie na ZapSign, com o seu visto. Documentos de rescisão só podem ser assinados depois que todos os recibos estiverem assinados.</div>`;
+  if(lista.length)h+=`<ul class="membros docs-lista">${lista.map(p=>{
+      const st=p.status==="assinado"?`<span class="chip" style="background:var(--good-soft);color:var(--good);margin-left:0">Assinado ${fmtD(p.assinado_em)}</span>`:p.status==="recusado"?`<span class="chip informal" style="margin-left:0">Recusado</span>`:`<span class="chip informal" style="margin-left:0">Aguardando ela</span>`;
+      const trava=p.status==="pendente"&&p.rescisao==="true"&&recPend?`<div class="muted small">Bloqueado para ela até assinar ${recPend} recibo(s) pendente(s).</div>`:"";
+      const visto=!p.emp_sign_url?"":p.emp_assinado_em?`<span class="muted small">Seu visto: ${fmtD(p.emp_assinado_em)}</span>`:`<a class="btnlike keep" href="${esc(p.emp_sign_url)}" target="_blank" rel="noopener">Dar visto</a>`;
+      return `<li><div style="min-width:0"><b>${esc(p.titulo||"Documento")}</b> <span class="muted small">enviado em ${fmtD(p.criado_em)}</span><div class="doc-st">${st} ${visto}</div>${trava}</div>
+        <span class="doc-acoes">${p.status==="assinado"?`<button type="button" class="ghost" data-act="pdfAssinado" data-pid="${p.id}">PDF</button>`:""}${p.status==="pendente"?`<button type="button" class="ghost danger" data-act="cancelarDoc" data-pid="${p.id}">Cancelar envio</button>`:""}</span></li>`}).join("")}</ul>`;
+  if(!ac||!ac.ativo)return h+`<div class="muted small">Crie o acesso dela ao app (acima) para enviar documentos.</div></div>`;
+  const up=docUpload[e.id];
+  h+=`<div class="doc-form">
+      <div class="field"><label for="dt-${e.id}">Tipo</label><select id="dt-${e.id}" data-doc-tipo="${e.id}">${TIPOS_DOC.map(([v,l])=>`<option value="${v}" ${f.tipo===v?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div class="field"><label for="dn-${e.id}">Título que ela vai ver</label><input type="text" id="dn-${e.id}" data-doc-titulo="${e.id}" value="${esc(f.titulo)}" maxlength="120"></div>
+      <div class="field"><span class="label" style="text-transform:none;letter-spacing:0;font-size:.82rem">Arquivo PDF (até 3 MB)</span>
+        <label class="btnlike" for="df-${e.id}">${up?"Trocar arquivo":"Escolher PDF"}</label><input type="file" id="df-${e.id}" data-doc-file="${e.id}" accept="application/pdf,.pdf" hidden>
+        <span class="small ${up&&up.erro?"cpf-msg":"muted"}" id="dfn-${e.id}">${up?(up.erro||`${esc(up.nome)} · ${(up.tam/1024).toFixed(0)} KB`):"Nenhum arquivo escolhido"}</span></div>
+      <div><button type="button" class="primary" data-act="enviarDoc" data-id="${e.id}" ${up&&!up.erro?"":"disabled"}>Enviar para assinatura</button></div>
+    </div>`;
+  return h+`</div>`;
+}
+function lerPDF(id,file){
+  if(!file)return;
+  if(!/pdf$/i.test(file.type)&&!/\.pdf$/i.test(file.name)){docUpload[id]={erro:"Escolha um arquivo PDF."};render();return}
+  if(file.size>3*1024*1024){docUpload[id]={erro:"Arquivo maior que 3 MB. Reduza o tamanho do PDF e tente de novo."};render();return}
+  const fr=new FileReader();fr.onload=()=>{docUpload[id]={nome:file.name,tam:file.size,base64:String(fr.result).split(",")[1]};render()};fr.readAsDataURL(file);
+}
+async function enviarDoc(id,b){
+  const e=S.emps[id]||{};const up=docUpload[id];const f=docForm[id]||{tipo:"rescisao",titulo:"Termo de rescisão (TRCT)"};
+  if(!up||up.erro)return;
+  const resc=(TIPOS_DOC.find(t=>t[0]===f.tipo)||[])[2];
+  const ok=await confirmar("Enviar documento para assinatura?",`<p><b>${esc(f.titulo)}</b> (${esc(up.nome)}) ficará disponível para <b>${esc(e.nome||"a funcionária")}</b> no app e será enviado para assinatura na ZapSign, com selfie. Você também recebe um pedido de visto.</p>${resc?`<div class="banner info">Por ser documento de rescisão, ela só consegue assinar depois de assinar todos os recibos pendentes.</div>`:""}`,"Enviar");
+  if(!ok)return;
+  b.disabled=true;b.textContent="Enviando…";
+  try{await api({acao:"documento",casa_id:nuvem.casa.id,func_id:id,titulo:f.titulo,tipo:f.tipo,nome:e.nome||"Funcionária",empregador_nome:cfg().empregadorNome||nuvem.email,pdf_base64:up.base64,app_url:location.origin+"/?assinado=1"});
+    delete docUpload[id];delete docForm[id];await carregarPublicados();render();toast("Documento enviado para assinatura")}
+  catch(err){toast("Não foi possível enviar: "+err.message);b.disabled=false;b.textContent="Enviar para assinatura"}
 }
 
 async function start(){
@@ -1413,6 +1481,7 @@ function viewFunc(){
         ${f("descontoDesc","Descrição do desconto",'type="text" placeholder="Ex.: plano de saúde"')}
       </div>
       ${blocoAcesso(e)}
+      ${blocoDocs(e)}
     </section>`;
   }
   return h+`<div><button class="primary" data-act="addEmp">+ Adicionar funcionária</button></div></div>`;
@@ -1479,6 +1548,7 @@ document.getElementById("status").addEventListener("click",async ev=>{const b=ev
 view.addEventListener("input",ev=>{
   const t=ev.target;const sec=t.closest("[data-emp]");
   if(t.id==="lf-cpf"){t.value=mascaraCPF(t.value);return}
+  if(t.dataset.docTitulo){const id=t.dataset.docTitulo;docForm[id]={...(docForm[id]||{tipo:"rescisao"}),titulo:t.value};return}
   if(mode==="func"||mode==="login")return;
   if(folhaSalva()&&tab==="mes")return;
   if(t.dataset.dx!==undefined&&sec){const a=getAdj(sec.dataset.emp);const x=(a.diasTrab=(a.diasTrab||[]).map(y=>({...y})))[+t.dataset.dx];if(!x)return;
@@ -1497,6 +1567,9 @@ view.addEventListener("input",ev=>{
     if(t.dataset.k==="data"){const anual=/^\d{2}-\d{2}$/.test(fx.data);fx.data=anual&&t.value?t.value.slice(5):t.value}else fx.nome=t.value;saveCfg();return}
 });
 view.addEventListener("change",ev=>{
+  {const t=ev.target;
+   if(t.dataset.docFile){lerPDF(t.dataset.docFile,t.files[0]);return}
+   if(t.dataset.docTipo){const id=t.dataset.docTipo;const tp=TIPOS_DOC.find(x=>x[0]===t.value);docForm[id]={tipo:t.value,titulo:tp?tp[1]:"Documento"};render();return}}
   {const t=ev.target;
    if(t.dataset.lote){lote[t.dataset.lote]=t.value;lote.prev=null;atualizarPrevLote();return}
    if(t.dataset.loteEmp!==undefined){t.checked?lote.emps.add(t.dataset.loteEmp):lote.emps.delete(t.dataset.loteEmp);atualizarPrevLote();return}
@@ -1525,6 +1598,12 @@ view.addEventListener("click",async ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="gerarLote"){gerarLote(b)}
+  else if(a==="enviarDoc"){enviarDoc(b.dataset.id,b)}
+  else if(a==="cancelarDoc"){const ok=await confirmar("Cancelar o envio?","<p>O documento deixa de aparecer para ela e o pedido de assinatura é cancelado na ZapSign.</p>","Cancelar envio","Voltar");if(!ok)return;
+    b.disabled=true;try{await api({acao:"cancelar_doc",casa_id:nuvem.casa.id,id:b.dataset.pid});await carregarPublicados();render();toast("Envio cancelado")}catch(err){toast(err.message);b.disabled=false}}
+  else if(a==="linkDoc"){const id=b.dataset.id;b.disabled=true;b.textContent="Liberando…";
+    try{const r=await api({acao:"link_doc",sessao:funcSessao,id},false);document.getElementById("doc-link-"+id).innerHTML=`<a class="btnlike primary-link" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir documento para assinar</a>`}
+    catch(err){toast(err.message);b.disabled=false;b.textContent="Conferir e assinar o documento"}}
   else if(a==="tipoLogin"){loginTipo=b.dataset.t;loginModo="entrar";render()}
   else if(a==="sairFunc"){sairFunc()}
   else if(a==="atualizarFunc"){b.disabled=true;b.textContent="Atualizando…";await carregarFunc(true);if(funcDados&&(funcDados.recibos||[]).some(r=>r.status==="pendente"))toast("A assinatura ainda não apareceu. Se você já assinou, espere um minuto e atualize de novo.")}
