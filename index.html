@@ -216,6 +216,7 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="mes" aria-selected="true">Cálculo do mês</button>
     <button role="tab" data-tab="func" aria-selected="false">Cadastros</button>
+    <button role="tab" data-tab="recibos" aria-selected="false">Recibos</button>
     <button role="tab" data-tab="regras" aria-selected="false">Regras gerais</button>
   </nav>
 
@@ -634,13 +635,14 @@ function softRender(){if(appHasFocus()){updateOutputs()}else render()}
 function render(){
   document.getElementById("mlabel").textContent=MESES[ym.m]+" "+ym.y;
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab?"true":"false"));
-  document.getElementById("prev").parentElement.hidden=(tab==="func");
+  document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos");
   const v=document.getElementById("view");
   document.body.classList.toggle("tela-login",mode==="login");
   if(mode==="login"){v.innerHTML=viewLogin();const f=document.getElementById(loginModo==="nova"?"lg-senha":"lg-email");if(f&&!loginEmail)f.focus();return}
   if(mode==="loading"||!S.empsLoaded){v.innerHTML=`<div class="empty"><div class="muted">Carregando suas regras…</div></div>`;return}
   if(tab==="mes")v.innerHTML=viewMes();
   else if(tab==="func")v.innerHTML=viewFunc();
+  else if(tab==="recibos"){v.innerHTML=viewRecibos();if(!lote.prev&&!lote.carregando)atualizarPrevLote()}
   else v.innerHTML=viewRegras();
   if(tab==="mes"&&folhaSalva())v.querySelectorAll("section.emp .adj input, section.emp .adj select, section.emp .adj button:not(.keep)").forEach(x=>x.disabled=true);
   updateOutputs();
@@ -678,6 +680,122 @@ function vtLinhas(e,r,c,dm){
   h+=`<tr><td>Desconto dela${e.descontaVT?`<div class="muted small">menor valor entre ${n(c.vtPerc)}% do salário de ${mes} (${brl(r.vt6)}) e o VT usado no mês (${brl(r.vtUsado)})</div>`:`<div class="muted small">desconto desligado no cadastro</div>`}</td><td class="neg">${brl(-r.vtDesc)}</td></tr>
       <tr><td>Custo do VT de ${mes} para você<div class="muted small">VT usado − desconto dela</div></td><td>${brl(r.vtEmpregador)}</td></tr>`;
   return h;
+}
+/* ---------- Recibos de vários meses ---------- */
+const lote={de:"",ate:"",emps:null,duasVias:true,adiant:true,resumo:true,prev:null,carregando:false};
+const ymKey=(y,m)=>`${y}-${String(m+1).padStart(2,"0")}`;
+function mesesEntre(de,ate){const out=[];if(!/^\d{4}-\d{2}$/.test(de)||!/^\d{4}-\d{2}$/.test(ate)||de>ate)return out;
+  let y=+de.slice(0,4),m=+de.slice(5)-1;while(ymKey(y,m)<=ate&&out.length<36){out.push({y,m,k:ymKey(y,m)});m++;if(m>11){m=0;y++}}return out}
+async function dadosDoMes(k){
+  if(k===S.mesKey)return S.mes||{};
+  if(mode==="local")return (lsLoad().meses||{})[k]||{};
+  if(db&&db.todos)return db.todos()["meses/"+k]||{};
+  if(db){try{const s=await db.doc("meses/"+k).get();return s.exists?s.data():{}}catch(e){return {}}}
+  return {};
+}
+/* Funcionárias e regras de um mês: as congeladas se a folha foi salva, senão as atuais */
+function contextoMes(md,y,m){
+  const fs=md&&md.fechada;
+  const emps=fs&&fs.emps?Object.entries(fs.emps).map(([id,e])=>({id,...NEW_EMP(),...e})):empList().filter(e=>ativaNoMes(e,y,m));
+  return {emps:emps.sort((a,b)=>n(a.ordem)-n(b.ordem)),cfg:fs&&fs.cfg?{...DEFAULT_CFG,...fs.cfg}:cfg(),salva:!!fs};
+}
+async function prepararLote(){
+  const meses=mesesEntre(lote.de,lote.ate);
+  lote.carregando=true;
+  const lista=[];
+  for(const mm of meses){const md=await dadosDoMes(mm.k);const ctx=contextoMes(md,mm.y,mm.m);
+    for(const e of ctx.emps){if(lote.emps&&!lote.emps.has(e.id))continue;
+      const adj=(md.ajustes||{})[e.id];const r=calcular(e,mm.y,mm.m,adj,ctx.cfg);
+      const ads=((adj||{}).adiantamentos||[]).filter(x=>x&&n(x.valor)>0).sort((a,b)=>(a.data||"")<(b.data||"")?-1:1);
+      lista.push({...mm,e,r,c:ctx.cfg,salva:ctx.salva,ads,total:r2(r.transferir+r.pag13+r.feriasSaida)})}}
+  lote.prev=lista;lote.carregando=false;
+  return lista;
+}
+function viewRecibos(){
+  const hoje=new Date();
+  if(!lote.de){lote.de=ymKey(hoje.getFullYear(),0);lote.ate=ymKey(hoje.getFullYear(),hoje.getMonth())}
+  const todas=empList();if(!lote.emps)lote.emps=new Set(todas.map(e=>e.id));
+  const meses=mesesEntre(lote.de,lote.ate);
+  let h=`<div style="display:flex;flex-direction:column;gap:16px">
+  <section class="card"><h2>Recibos de vários meses</h2>
+    <div class="muted small">Escolha o período e as funcionárias. Sai um único PDF com os recibos de todos os meses, um após o outro.</div>
+    <div class="grid-form">
+      <div class="field"><label for="lt-de">De</label><input type="month" id="lt-de" data-lote="de" value="${lote.de}"></div>
+      <div class="field"><label for="lt-ate">Até</label><input type="month" id="lt-ate" data-lote="ate" value="${lote.ate}"></div>
+    </div>
+    ${!meses.length?`<div class="cpf-msg">Escolha um período válido: o mês inicial precisa ser antes do final.</div>`:meses.length>=36?`<div class="muted small">Limite de 36 meses por vez.</div>`:""}
+    <div class="field"><span class="label">Funcionárias</span><div class="days">${todas.map(e=>`<label><input type="checkbox" data-lote-emp="${e.id}" ${lote.emps.has(e.id)?"checked":""}>${esc(e.nome||"Sem nome")}</label>`).join("")||'<span class="muted small">Nenhuma funcionária cadastrada.</span>'}</div></div>
+    <div class="grid-form">
+      <label class="check"><input type="checkbox" data-lote-op="duasVias" ${lote.duasVias?"checked":""}>Duas vias (empregador e funcionária)</label>
+      <label class="check"><input type="checkbox" data-lote-op="adiant" ${lote.adiant?"checked":""}>Incluir recibos de adiantamento</label>
+      <label class="check"><input type="checkbox" data-lote-op="resumo" ${lote.resumo?"checked":""}>Página de resumo no início</label>
+    </div>
+  </section>
+  <section class="card"><div class="conta-linha"><h2>Prévia</h2><button class="primary" data-act="gerarLote" ${lote.prev&&lote.prev.length?"":"disabled"}>Gerar PDF</button></div>
+    <div id="lote-prev">${lote.carregando?'<div class="muted small">Calculando…</div>':viewPrevLote()}</div>
+  </section></div>`;
+  return h;
+}
+function viewPrevLote(){
+  const L=lote.prev||[];
+  if(!L.length)return `<div class="muted small">Nenhum recibo no período escolhido. Confira as datas e as funcionárias marcadas.</div>`;
+  const naoSalvas=L.filter(x=>!x.salva).length;
+  const tot=r2(L.reduce((a,x)=>a+x.total,0)),nAd=L.reduce((a,x)=>a+x.ads.length,0);
+  return `${naoSalvas?`<div class="banner warn small">${naoSalvas} recibo(s) de folhas ainda não salvas: os valores usam os cadastros e regras de hoje. Salve a folha de cada mês para congelar os valores.</div>`:""}
+    <div class="table-wrap"><table class="list"><thead><tr><th>Mês</th><th>Funcionária</th><th>Folha</th><th style="text-align:right">Total recebido</th></tr></thead><tbody>
+    ${L.map(x=>`<tr><td>${MESES[x.m].slice(0,3)}/${x.y}</td><td>${esc(x.e.nome||"")}</td><td><span class="chip ${x.salva?"":"informal"}" style="margin-left:0">${x.salva?"Salva":"Em edição"}</span>${x.ads.length?` <span class="muted small">+${x.ads.length} adiant.</span>`:""}</td><td class="num" style="text-align:right">${brl(x.total)}</td></tr>`).join("")}
+    </tbody><tfoot><tr><th colspan="3">${L.length} recibo(s)${lote.adiant&&nAd?` e ${nAd} recibo(s) de adiantamento`:""}</th><th class="num" style="text-align:right">${brl(tot)}</th></tr></tfoot></table></div>`;
+}
+async function atualizarPrevLote(){lote.carregando=true;const box=document.getElementById("lote-prev");if(box)box.innerHTML='<div class="muted small">Calculando…</div>';
+  await prepararLote();if(tab==="recibos"&&!appHasFocus())render();else{const b2=document.getElementById("lote-prev");if(b2)b2.innerHTML=viewPrevLote();const g=document.querySelector("[data-act=gerarLote]");if(g)g.disabled=!(lote.prev&&lote.prev.length)}}
+function desenharResumoLote(doc,L){
+  const W=210,M=16,AC=[44,73,176],INK=[24,32,46],MUT=[91,101,120],LN=[213,219,229],SUN=[236,240,247];
+  const T=(t,x,y,o={})=>{doc.setFont("helvetica",o.b?"bold":"normal");doc.setFontSize(o.s||9);doc.setTextColor(...(o.c||INK));doc.text(String(t),x,y,o.a?{align:o.a}:undefined)};
+  const c=cfg();
+  doc.setFillColor(...AC);doc.rect(0,0,W,5,"F");
+  T("RESUMO DOS RECIBOS",M,18,{b:1,s:16});
+  const per=`${MESES[+lote.de.slice(5)-1]}/${lote.de.slice(0,4)} a ${MESES[+lote.ate.slice(5)-1]}/${lote.ate.slice(0,4)}`;
+  T(per,W-M,18,{b:1,s:11,c:AC,a:"right"});
+  if(c.empregadorNome)T(`Empregador: ${c.empregadorNome}${c.empregadorCPF?" · CPF "+c.empregadorCPF:""}`,M,25,{s:9,c:MUT});
+  let y=34;
+  const xM=M+3,xF=M+32,xL=M+100,xV=M+124,x13=M+150,xT=W-M-3;
+  doc.setFillColor(...SUN);doc.rect(M,y,W-2*M,7.5,"F");
+  T("MÊS",xM,y+5,{b:1,s:7.5,c:MUT});T("FUNCIONÁRIA",xF,y+5,{b:1,s:7.5,c:MUT});
+  [["LÍQUIDO",xL],["VT",xV],["13º/FÉRIAS",x13],["TOTAL",xT]].forEach(([t,x])=>T(t,x,y+5,{b:1,s:7.5,c:MUT,a:"right"}));
+  y+=7.5;
+  const porEmp={};
+  for(const x of L){
+    if(y>270){doc.addPage();doc.setFillColor(...AC);doc.rect(0,0,W,5,"F");y=16}
+    doc.setFontSize(9);T(`${MESES[x.m]}/${x.y}`,xM,y+5);T(doc.splitTextToSize(x.e.nome||"",xL-xF-26)[0],xF,y+5);
+    const v13=r2(x.r.pag13+x.r.feriasSaida);
+    T(pdfMoeda(x.r.liquido),xL,y+5,{a:"right"});T((x.r.vtBruto<0?"- ":"")+pdfMoeda(x.r.vtBruto),xV,y+5,{a:"right"});T(v13?pdfMoeda(v13):"—",x13,y+5,{a:"right",c:v13?INK:MUT});T(pdfMoeda(x.total),xT,y+5,{a:"right",b:1});
+    y+=7.5;doc.setDrawColor(...LN);doc.setLineDashPattern([.6,.8],0);doc.line(M,y,W-M,y);doc.setLineDashPattern([],0);
+    porEmp[x.e.nome]=(porEmp[x.e.nome]||0)+x.total;
+  }
+  y+=6;
+  Object.entries(porEmp).forEach(([nm,v])=>{T(`Total ${nm}`,M+3,y+4,{b:1});T(pdfMoeda(r2(v)),W-M-3,y+4,{b:1,a:"right"});y+=7});
+  doc.setFillColor(...AC);doc.roundedRect(M,y+2,W-2*M,12,2,2,"F");
+  T("TOTAL DO PERÍODO",M+5,y+10,{b:1,s:10.5,c:[255,255,255]});T(pdfMoeda(r2(L.reduce((a,x)=>a+x.total,0))),W-M-5,y+10.3,{b:1,s:13,c:[255,255,255],a:"right"});
+  T(`Gerado pela Folha da Casa em ${new Date().toLocaleDateString("pt-BR")}`,M,290.5,{s:7,c:MUT});
+}
+async function gerarLote(btn){
+  const J=window.jspdf&&window.jspdf.jsPDF;
+  if(!J){toast("O gerador de PDF não carregou. Verifique a internet e recarregue a página.");return}
+  btn.disabled=true;const txt=btn.textContent;btn.textContent="Gerando…";
+  try{
+    const L=await prepararLote();if(!L.length){toast("Nenhum recibo no período.");return}
+    const doc=new J({unit:"mm",format:"a4"});doc.setProperties({title:`Recibos ${lote.de} a ${lote.ate}`});
+    const salvoYm={...ym};let primeira=true;const nova=()=>{if(!primeira)doc.addPage();primeira=false};
+    try{
+      if(lote.resumo){nova();desenharResumoLote(doc,L)}
+      for(const x of L){ym.y=x.y;ym.m=x.m;
+        nova();desenharVia(doc,x.e,x.r,x.c,lote.duasVias?"1ª via – Empregador":"Recibo");
+        if(lote.duasVias){nova();desenharVia(doc,x.e,x.r,x.c,"2ª via – Funcionária")}
+        if(lote.adiant)x.ads.forEach(a=>{nova();desenharAdiantamento(doc,x.e,x.c,a)});
+      }
+    }finally{ym.y=salvoYm.y;ym.m=salvoYm.m}
+    await salvarPDF(doc,`recibos-${lote.de}-a-${lote.ate}.pdf`);
+  }finally{btn.disabled=false;btn.textContent=txt}
 }
 function viewMes(){
   const todas=empList(),emps=empsMes(),c=cfgMes(),fs=folhaSalva();
@@ -1125,7 +1243,7 @@ function viewRegras(){
 
 /* ---------- Eventos ---------- */
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200)}
-document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
+document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
 document.getElementById("prev").onclick=()=>{ym.m--;if(ym.m<0){ym.m=11;ym.y--}subscribeMes()};
 document.getElementById("next").onclick=()=>{ym.m++;if(ym.m>11){ym.m=0;ym.y++}subscribeMes()};
 
@@ -1152,6 +1270,10 @@ view.addEventListener("input",ev=>{
     if(t.dataset.k==="data"){const anual=/^\d{2}-\d{2}$/.test(fx.data);fx.data=anual&&t.value?t.value.slice(5):t.value}else fx.nome=t.value;saveCfg();return}
 });
 view.addEventListener("change",ev=>{
+  {const t=ev.target;
+   if(t.dataset.lote){lote[t.dataset.lote]=t.value;lote.prev=null;atualizarPrevLote();return}
+   if(t.dataset.loteEmp!==undefined){t.checked?lote.emps.add(t.dataset.loteEmp):lote.emps.delete(t.dataset.loteEmp);atualizarPrevLote();return}
+   if(t.dataset.loteOp){lote[t.dataset.loteOp]=t.checked;const b2=document.getElementById("lote-prev");if(b2)b2.innerHTML=viewPrevLote();return}}
   const t=ev.target;const sec=t.closest("[data-emp]");
   if(t.dataset.lanc!==undefined&&t.tagName==="SELECT"&&sec&&!folhaSalva()){const a=getAdj(sec.dataset.emp);const l=a.lancamentos[+t.dataset.lanc];if(l){l.tipo=t.value;updateOutputs();saveMes()}return}
   if(t.dataset.dia!==undefined&&sec){const e=S.emps[sec.dataset.emp];const d=+t.dataset.dia;const s=new Set(e.dias||[]);t.checked?s.add(d):s.delete(d);e.dias=[...s].sort();saveEmp(sec.dataset.emp);return}
@@ -1175,6 +1297,7 @@ view.addEventListener("click",async ev=>{
   else if(a==="nodel"){render()}
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
+  else if(a==="gerarLote"){gerarLote(b)}
   else if(a==="loginModo"){loginModo=b.dataset.m;const em=document.getElementById("lg-email");if(em)loginEmail=em.value.trim();render()}
   else if(a==="sair"){nuvem=null;db=null;S.cfg=null;S.emps={};S.mes={};S.empsLoaded=false;try{localStorage.removeItem("folha-casa-atual")}catch(e){}sb.auth.signOut()}
   else if(a==="addMembro"){const inp=document.getElementById("novo-membro");const em=(inp.value||"").trim().toLowerCase();const msg=document.getElementById("membro-msg");
@@ -1231,7 +1354,7 @@ function c2(x){return JSON.parse(JSON.stringify(x||[]))}
 view.addEventListener("focusout",()=>{setTimeout(()=>{if(!appHasFocus()&&tab==="mes")updateOutputs()},0)});
 
 try{const t=localStorage.getItem("folha-tab");if(t)tab=t}catch(_){}
-window.__calc={baixarAdiantamento,baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
+window.__calc={lote,prepararLote,baixarAdiantamento,baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
 start();
 })();
 </script>

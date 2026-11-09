@@ -19,6 +19,10 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Férias** com 1/3, data de vencimento do período e quanto guardar por mês para 13º e férias.
 - **Recibo em PDF** no formato de holerite, em duas vias (empregador e funcionária), com proventos e descontos, valor por extenso e linhas de assinatura. Também dá para copiar o recibo em texto.
 
+## Recibos de vários meses
+
+Na aba **Recibos**, escolha o período (de/até, até 36 meses) e as funcionárias. A prévia mostra cada mês com o total recebido e se a folha está salva. **Gerar PDF** cria um único arquivo com uma página de resumo (opcional), os recibos de cada mês em uma ou duas vias e os recibos de adiantamento (opcional). Meses com a folha salva usam os valores congelados; os demais usam os cadastros e regras atuais.
+
 ## Salvar a folha
 
 Depois de conferir o mês, clique em **Salvar folha**. Os valores ficam congelados (mesmo que você mude salário ou regras depois) e os campos do mês ficam travados. Para mexer, clique em **Editar folha**: a folha volta a usar os cadastros e regras atuais.
