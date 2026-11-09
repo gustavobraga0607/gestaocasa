@@ -7,7 +7,7 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 ## O que o app calcula
 
 - **Dias de trabalho do mês**, a partir da escala semanal de cada funcionária, descontando os feriados.
-- **Vale-transporte**: dias × viagens por dia × tarifa. Desconto de até 6% do salário; o resto é pago pelo empregador. Por padrão o VT é pago adiantado, com os dias do mês seguinte.
+- **Vale-transporte** (Lei 7.418/85, Decreto 10.854/2021 e LC 150/2015, art. 19): devido só nos dias de deslocamento efetivo. No modo adiantado (padrão), cada folha entrega o VT do mês seguinte (a folha de outubro paga novembro) e faz o **acerto do mês atual**: dias usados − dias já adiantados. Faltas, férias e dias após o desligamento viram desconto; dias extras viram complemento. No mês do desligamento não há adiantamento e o VT não usado é devolvido. A funcionária paga no máximo 6% do salário básico do mês, limitado ao VT que usou no mês; o resto é custo do empregador.
 - **INSS** pela tabela progressiva (só para registradas).
 - **Faltas**, marcadas direto no calendário do mês: falta sem justificativa desconta o dia (1/30 do salário) e o **DSR** da semana; falta justificada (atestado) não desconta salário, só o vale-transporte do dia.
 - **DSR (descanso semanal remunerado)**: cada semana de segunda a domingo com falta sem justificativa perde o domingo e os feriados de folga daquela semana. Pode ser desligado em **Regras gerais**.

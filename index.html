@@ -358,9 +358,6 @@ function calcular(emp,y,m,adj,cfg){
   const dias=diasMes(emp,y,m,cfg);
   const previstos=dias.filter(x=>x.trabalha).length;
   const refY=cfg.vtReferencia==="proximo"?(m===11?y+1:y):y, refM=cfg.vtReferencia==="proximo"?(m+1)%12:m;
-  // Mês da admissão com VT adiantado: paga também os dias deste mês
-  const vtAdm=(cfg.vtReferencia==="proximo"&&admMes)?dias.filter(x=>x.trabalha).length:0;
-  const diasRef=diasMes(emp,refY,refM,cfg).filter(x=>x.trabalha).length+vtAdm;
   // Faltas marcadas no calendário: "i" = sem justificativa (desconta dia + DSR), "j" = justificada (atestado, sem desconto)
   const fd=adj.faltasDias||{};const diasTrab=new Set(dias.filter(x=>x.trabalha).map(x=>x.k));
   const fInj=Object.keys(fd).filter(k=>fd[k]==="i"&&diasTrab.has(k)).sort();
@@ -382,8 +379,21 @@ function calcular(emp,y,m,adj,cfg){
   // Dias extras trabalhados (fora da escala): valor do dia (1/30) + adicional; somam a passagem do dia no VT
   const extras=(adj.diasTrab||[]).filter(x=>x&&dataOk(x.data)).map(x=>{const pc=x.perc===""||x.perc==null?50:n(x.perc);return {data:x.data,perc:pc,valor:r2(sal/30*(1+pc/100))}}).sort((a,b)=>a.data<b.data?-1:1);
   const extrasValor=r2(extras.reduce((a,x)=>a+x.valor,0));
-  const vtDias=Math.max(0,diasRef-faltas-faltasJust-vtFerias+extras.length+n(adj.diasExtras));
-  const vtBruto=r2(vtDias*n(emp.viagensDia)*n(emp.tarifa));
+  /* Vale-transporte (Lei 7.418/85, Decreto 10.854/2021 e LC 150/2015, art. 19)
+     - É devido só nos dias de deslocamento efetivo. A folha de cada mês acerta o VT usado no próprio mês.
+     - Adiantado: a folha deste mês já paga o VT do mês seguinte. Os dias deste mês foram adiantados na folha anterior;
+       acerto = dias usados − dias já adiantados (negativo = devolução de VT não usado: faltas, férias, desligamento).
+     - Desconto da funcionária: até 6% do salário básico do mês, limitado ao VT usado no mês. */
+  const valorDiaVT=r2(n(emp.viagensDia)*n(emp.tarifa));
+  const vtAdiantado=cfg.vtReferencia==="proximo";
+  const diasEscalaVT=previstos;
+  const vtUsadoDias=Math.max(0,diasEscalaVT-faltas-faltasJust-vtFerias+extras.length+n(adj.diasExtras));
+  const vtProxDias=vtAdiantado?diasMes(emp,refY,refM,cfg).filter(x=>x.trabalha).length:0;
+  const vtJaAdiantDias=vtAdiantado&&!admMes?diasMes({...emp,demissao:""},y,m,cfg).filter(x=>x.trabalha).length:0;
+  const vtPosDeslig=vtAdiantado&&demMes?Math.max(0,vtJaAdiantDias-diasEscalaVT):0;
+  const vtAcertoDias=vtAdiantado?vtUsadoDias-vtJaAdiantDias:0;
+  const vtUsado=r2(vtUsadoDias*valorDiaVT), vtProx=r2(vtProxDias*valorDiaVT), vtAcerto=r2(vtAcertoDias*valorDiaVT);
+  const vtBruto=vtAdiantado?r2(vtProx+vtAcerto):vtUsado;
   const descFaltas=r2(Math.min(sal/30*faltas,salMes)), descDSR=r2(Math.min(sal/30*dsrDias,Math.max(0,salMes-descFaltas)));
   const valorHora=n(emp.jornadaMensal)>0?sal/n(emp.jornadaMensal):0;
   const he=r2(valorHora*(1+n(emp.percHE)/100)*n(adj.horasExtras));
@@ -395,13 +405,14 @@ function calcular(emp,y,m,adj,cfg){
   const adicional=r2(n(emp.adicionalFixo)+somaL("p"));
   const bruto=r2(salMes-descFaltas-descDSR+he+extrasValor+adicional+terco);
   const inss=reg&&emp.descontaINSS?calcINSS(Math.max(0,bruto),cfg.inss):0;
-  const vtDesc=emp.descontaVT?r2(Math.min(salMes*n(cfg.vtPerc)/100,vtBruto)):0;
+  const vt6=r2(salMes*n(cfg.vtPerc)/100);
+  const vtDesc=emp.descontaVT?r2(Math.max(0,Math.min(vt6,vtUsado))):0;
   const outrosDesc=r2(n(emp.descontoFixo)+somaL("d"));
   // Adiantamentos já pagos no mês: abatidos do líquido (não mudam a base do INSS)
   const adiants=(adj.adiantamentos||[]).filter(x=>x&&n(x.valor)>0).map(x=>({id:x.id,data:x.data||"",desc:(x.desc||"").trim(),valor:r2(n(x.valor))})).sort((a,b)=>a.data<b.data?-1:1);
   const adiant=r2(adiants.reduce((a,x)=>a+x.valor,0));
   const liquido=r2(bruto-inss-vtDesc-outrosDesc-adiant);
-  const vtEmpregador=r2(vtBruto-vtDesc);
+  const vtEmpregador=r2(vtUsado-vtDesc);
   const e={...DEFAULT_CFG.encargos,...(cfg.encargos||{})};
   const pct=(v,k)=>reg?r2(v*n(e[k])/100):0;
   const enc={patronal:pct(bruto,"patronal"),gilrat:pct(bruto,"gilrat"),fgts:pct(bruto,"fgts"),indeniz:pct(bruto,"indeniz")};
@@ -426,7 +437,7 @@ function calcular(emp,y,m,adj,cfg){
   // Reserva mensal sugerida: 1/12 de 13º + 1/12 de férias com 1/3
   const reserva13=r2(sal/12), reservaFerias=r2(sal/12*4/3);
   const reservaEnc=reg?r2((reserva13+reservaFerias)*(n(e.patronal)+n(e.gilrat)+n(e.fgts)+n(e.indeniz))/100):0;
-  return {extras,extrasValor,lancs,reg,sal,dias,previstos,diasRef,refY,refM,faltas,faltasJust,fInj,fJus,dsr,dsrDias,descDSR,diasFerias,feriasValor,terco,vtFerias,vtDias,vtBruto,descFaltas,valorHora,he,adicional,bruto,inss,vtDesc,outrosDesc,liquido,vtEmpregador,enc,dae,transferir,
+  return {valorDiaVT,vtAdiantado,diasEscalaVT,vtUsadoDias,vtProxDias,vtJaAdiantDias,vtPosDeslig,vtAcertoDias,vtUsado,vtProx,vtAcerto,vt6,extras,extrasValor,lancs,reg,sal,dias,previstos,refY,refM,faltas,faltasJust,fInj,fJus,dsr,dsrDias,descDSR,diasFerias,feriasValor,terco,vtFerias,vtBruto,descFaltas,valorHora,he,adicional,bruto,inss,vtDesc,outrosDesc,liquido,vtEmpregador,enc,dae,transferir,
     avos,total13,d13,pag13,dae13,reserva13,reservaFerias,reservaEnc,ferias:proxFerias(emp,y,m),
     admMes,demMes,diasPagos,salMes,avosFS,feriasSaida,
     adiants,adiant,custo:r2(liquido+adiant+vtBruto+dae+pag13+dae13+feriasSaida),adj};
@@ -645,6 +656,29 @@ function folhaSalva(){return S.mes&&S.mes.fechada?S.mes.fechada:null}
 function cfgMes(){const f=folhaSalva();return f&&f.cfg?{...DEFAULT_CFG,...f.cfg}:cfg()}
 function empsMes(){const f=folhaSalva();if(f&&f.emps)return Object.entries(f.emps).map(([id,e])=>({id,...NEW_EMP(),...e})).sort((a,b)=>n(a.ordem)-n(b.ordem));return empsAtivas()}
 const empView={};
+/* Bloco do vale-transporte no resumo do mês */
+function vtLinhas(e,r,c,dm){
+  const mes=MESES[ym.m].toLowerCase(), prox=MESES[r.refM].toLowerCase()+(r.refY!==ym.y?" de "+r.refY:"");
+  const vd=`${n(e.viagensDia)} viagens × ${brl(n(e.tarifa))} = ${brl(r.valorDiaVT)} por dia`;
+  const dd=(q)=>`${q} dia${Math.abs(q)===1?"":"s"}`;
+  const usado=[`${dd(r.diasEscalaVT)} de escala`];
+  if(r.faltas+r.faltasJust)usado.push(`− ${dd(r.faltas+r.faltasJust)} de falta`);
+  if(r.vtFerias)usado.push(`− ${dd(r.vtFerias)} de férias (estimado)`);
+  if(r.extras.length)usado.push(`+ ${dd(r.extras.length)} extra${r.extras.length>1?"s":""} trabalhado${r.extras.length>1?"s":""}`);
+  if(n(r.adj.diasExtras))usado.push(`${n(r.adj.diasExtras)>0?"+":"−"} ${dd(Math.abs(n(r.adj.diasExtras)))} de ajuste manual`);
+  let h=`<tr class="sec"><td colspan="2" class="label">Vale-transporte · ${vd}</td></tr>`;
+  if(r.vtAdiantado){
+    h+=`<tr><td><b>1. Adiantamento de ${prox}</b><div class="muted small">${r.vtProxDias?`${dd(r.vtProxDias)} de escala em ${prox}`:(dataOk(e.demissao)&&e.demissao<`${r.refY}-${String(r.refM+1).padStart(2,"0")}-01`?"Nada a adiantar: desligamento antes desse mês":"Sem dias de escala nesse mês")}</div></td><td>${brl(r.vtProx)}</td></tr>`;
+    h+=`<tr><td><b>2. Acerto de ${mes}</b><div class="muted small">Usado em ${mes}: ${usado.join(" ")} = <b>${dd(r.vtUsadoDias)}</b><br>Já adiantado na folha anterior: <b>${dd(r.vtJaAdiantDias)}</b>${r.admMes?" (admissão neste mês)":""}${r.vtPosDeslig?` · inclui ${dd(r.vtPosDeslig)} após o desligamento em ${dm(e.demissao)}`:""}<br>Diferença: <b>${r.vtAcertoDias>0?"+":""}${dd(r.vtAcertoDias)}</b> ${r.vtAcertoDias<0?"(VT não usado, descontado)":r.vtAcertoDias>0?"(complemento)":"(nada a acertar)"}</div></td><td class="${r.vtAcerto<0?"neg":""}">${brl(r.vtAcerto)}</td></tr>`;
+    h+=`<tr class="tot"><td>${r.vtBruto<0?"VT a devolver (sai do pagamento)":"VT a entregar nesta folha"}</td><td class="${r.vtBruto<0?"neg":""}">${brl(r.vtBruto)}</td></tr>`;
+  }else{
+    h+=`<tr><td><b>VT usado em ${mes}</b><div class="muted small">${usado.join(" ")} = <b>${dd(r.vtUsadoDias)}</b></div></td><td>${brl(r.vtUsado)}</td></tr>`;
+    h+=`<tr class="tot"><td>VT a entregar nesta folha</td><td>${brl(r.vtBruto)}</td></tr>`;
+  }
+  h+=`<tr><td>Desconto dela${e.descontaVT?`<div class="muted small">menor valor entre ${n(c.vtPerc)}% do salário de ${mes} (${brl(r.vt6)}) e o VT usado no mês (${brl(r.vtUsado)})</div>`:`<div class="muted small">desconto desligado no cadastro</div>`}</td><td class="neg">${brl(-r.vtDesc)}</td></tr>
+      <tr><td>Custo do VT de ${mes} para você<div class="muted small">VT usado − desconto dela</div></td><td>${brl(r.vtEmpregador)}</td></tr>`;
+  return h;
+}
 function viewMes(){
   const todas=empList(),emps=empsMes(),c=cfgMes(),fs=folhaSalva();
   if(todas.length&&!emps.length)return `<div class="empty"><h2>Ninguém trabalhou em ${MESES[ym.m].toLowerCase()} de ${ym.y}</h2><div class="muted">As datas de admissão e desligamento das funcionárias cadastradas ficam fora deste mês.</div></div>`;
@@ -656,7 +690,7 @@ function viewMes(){
       <span class="muted small">${fs?`em ${quando.toLocaleDateString("pt-BR")} às ${quando.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}. Os valores ficam congelados, mesmo se você mudar cadastros ou regras depois.`:`Confira os lançamentos e salve a folha de ${MESES[ym.m].toLowerCase()} para travar os valores.`}</span></div>
       ${fs?`<span id="edit-zone"><button data-act="askEditar">Editar folha</button></span>`:`<button class="primary" data-act="salvarFolha">Salvar folha</button>`}</div>
     <div class="totals" id="totals"></div>`;
-  h+=`<div class="banner info small">${ferMes.length?"Feriados em "+MESES[ym.m]+": "+ferMes.map(([k,v])=>`<b>${+k.slice(8)}</b> ${esc(v)}`).join(" · ")+". ":"Sem feriados neste mês. "}${c.vtReferencia==="proximo"?`O vale-transporte é pago adiantado, com os dias de <b>${MESES[(ym.m+1)%12]}</b>.`:"O vale-transporte considera os dias deste mês."}</div>`;
+  h+=`<div class="banner info small">${ferMes.length?"Feriados em "+MESES[ym.m]+": "+ferMes.map(([k,v])=>`<b>${+k.slice(8)}</b> ${esc(v)}`).join(" · ")+". ":"Sem feriados neste mês. "}${c.vtReferencia==="proximo"?`Vale-transporte adiantado: esta folha entrega o VT de <b>${MESES[(ym.m+1)%12].toLowerCase()}</b> e acerta o de ${MESES[ym.m].toLowerCase()} (faltas, férias, dias extras e desligamento).`:`Vale-transporte no próprio mês: esta folha paga o VT usado em ${MESES[ym.m].toLowerCase()}.`}</div>`;
   h+=`</div><div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">`;
   for(const e of emps){
     const a={...NEW_ADJ(),...((S.mes.ajustes||{})[e.id]||{})};
@@ -747,15 +781,13 @@ function updateOutputs(){
       rows+=`<tr class="tot"><td>Salário bruto</td><td>${brl(r.bruto)}</td></tr>
       <tr class="sec"><td colspan="2" class="label">Descontos</td></tr>
       <tr><td>INSS ${!r.reg?`<span class="muted small">sem registro, não se aplica</span>`:e.descontaINSS?`<span class="muted small">tabela progressiva</span>`:`<span class="muted small">não descontado</span>`}</td><td class="neg">${brl(-r.inss)}</td></tr>
-      <tr><td>Vale-transporte ${e.descontaVT?`<span class="muted small">até ${n(c.vtPerc)}% do salário</span>`:`<span class="muted small">não descontado</span>`}</td><td class="neg">${brl(-r.vtDesc)}</td></tr>`;
+      <tr><td>Vale-transporte ${e.descontaVT?`<span class="muted small">parte dela, até ${n(c.vtPerc)}% do salário</span>`:`<span class="muted small">não descontado</span>`}</td><td class="neg">${brl(-r.vtDesc)}</td></tr>`;
       if(n(e.descontoFixo))rows+=`<tr><td>${esc(e.descontoDesc||"Desconto fixo")}</td><td class="neg">${brl(-n(e.descontoFixo))}</td></tr>`;
       r.lancs.filter(l=>l.tipo==="d").forEach(l=>rows+=`<tr><td>${esc(l.desc)} <span class="muted small">avulso</span></td><td class="neg">${brl(-l.valor)}</td></tr>`);
       r.adiants.forEach(x=>rows+=`<tr><td>Adiantamento salarial <span class="muted small">pago em ${x.data?dm(x.data):"data não informada"}${x.desc?" · "+esc(x.desc):""}</span></td><td class="neg">${brl(-x.valor)}</td></tr>`);
       if(r.liquido<0)rows+=`<tr><td colspan="2" class="small" style="text-align:left;font-family:var(--f-body);color:var(--bad)">Os descontos e adiantamentos passam do salário do mês. Confira os valores.</td></tr>`;
-      rows+=`<tr class="tot"><td>Salário líquido</td><td>${brl(r.liquido)}</td></tr>
-      <tr class="sec"><td colspan="2" class="label">Vale-transporte (${ref})</td></tr>
-      <tr><td>${r.vtDias} dia(s) × ${n(e.viagensDia)} viagens × ${brl(n(e.tarifa))}<div class="muted small">${r.diasRef} dia(s) de escala${r.faltas+r.faltasJust?` − ${r.faltas+r.faltasJust} falta(s)`:""}${r.vtFerias?` − ${r.vtFerias} em férias`:""}${r.extras.length?` + ${r.extras.length} dia(s) extra(s) trabalhado(s)`:""}${n(r.adj.diasExtras)?` ${n(r.adj.diasExtras)>0?"+":"−"} ${Math.abs(n(r.adj.diasExtras))} extra(s)`:""}</div></td><td>${brl(r.vtBruto)}</td></tr>
-      <tr><td>Parte paga por você</td><td>${brl(r.vtEmpregador)}</td></tr>`;
+      rows+=`<tr class="tot"><td>Salário líquido</td><td>${brl(r.liquido)}</td></tr>`;
+      rows+=vtLinhas(e,r,c,dm);
       if(r.d13){const d=r.d13;const saida=d.parcela==="saida";rows+=`<tr class="sec"><td colspan="2" class="label">${saida?"13º proporcional · desligamento":`13º salário · ${d.parcela}ª parcela (pagar até ${d.vence})`}</td></tr>
       <tr><td>13º ${saida?"proporcional":"integral"} <span class="muted small">${r.avos}/12 avos × ${brl(r.sal/12)}</span></td><td>${brl(r.total13)}</td></tr>
       ${saida?(d.pago?`<tr><td>1ª parcela já paga em novembro</td><td class="neg">${brl(-d.pago)}</td></tr>`:""):`<tr><td>${d.parcela===1?"1ª parcela (metade, sem descontos)":"2ª parcela (restante)"}</td><td>${brl(d.bruto)}</td></tr>`}
@@ -826,7 +858,10 @@ function itensRecibo(e,r,c){
   if(n(e.descontoFixo))desc.push([e.descontoDesc||"Desconto fixo","",n(e.descontoFixo)]);
   r.lancs.filter(l=>l.tipo==="d").forEach(l=>desc.push([l.desc,"",l.valor]));
   r.adiants.forEach(x=>desc.push([`Adiantamento salarial${x.data?" pago em "+fmtData(x.data):""}`,"",x.valor]));
-  if(r.vtBruto)outros.push([`Vale-transporte (${r.vtDias} dias × ${n(e.viagensDia)} viagens × ${pdfMoeda(n(e.tarifa))})`,"",r.vtBruto]);
+  {const mes=MESES[ym.m].toLowerCase(),prox=MESES[r.refM].toLowerCase();
+   if(r.vtAdiantado){if(r.vtProx)outros.push([`Vale-transporte adiantado de ${prox} (${r.vtProxDias} dias × ${pdfMoeda(r.valorDiaVT)})`,"",r.vtProx]);
+     if(r.vtAcerto)outros.push([r.vtAcerto<0?`Devolução de VT não usado em ${mes} (${-r.vtAcertoDias} dias × ${pdfMoeda(r.valorDiaVT)})`:`Complemento de VT de ${mes} (${r.vtAcertoDias} dias × ${pdfMoeda(r.valorDiaVT)})`,"",r.vtAcerto])}
+   else if(r.vtUsado)outros.push([`Vale-transporte de ${mes} (${r.vtUsadoDias} dias × ${pdfMoeda(r.valorDiaVT)})`,"",r.vtUsado])}
   if(r.d13){const d=r.d13;const nome=d.parcela==="saida"?`13º salário proporcional (${r.avos}/12 avos)`:d.parcela===1?`13º salário – 1ª parcela (${r.avos}/12 avos)`:`13º salário – 2ª parcela (${r.avos}/12 avos)`;
     outros.push([nome,"",d.bruto]);if(d.inss)outros.push(["INSS sobre o 13º salário","",-d.inss])}
   if(r.feriasSaida)outros.push([`Férias proporcionais + 1/3 (${r.avosFS}/12 avos)`,"",r.feriasSaida]);
@@ -979,7 +1014,8 @@ function recibo(id){
   r.lancs.filter(l=>l.tipo==="d").forEach(l=>t+=L(l.desc,brl(-l.valor))+"\n");
   r.adiants.forEach(x=>t+=L(`Adiantamento ${x.data?dmy(x.data):""}`,brl(-x.valor))+"\n");
   t+=L("SALÁRIO LÍQUIDO",brl(r.liquido))+"\n\n";
-  t+=L(`Vale-transporte (${r.vtDias} dias)`,brl(r.vtBruto))+"\n";
+  if(r.vtAdiantado){if(r.vtProx)t+=L(`VT adiantado ${MESES[r.refM].toLowerCase()} (${r.vtProxDias}d)`,brl(r.vtProx))+"\n";if(r.vtAcerto)t+=L(`Acerto VT ${MESES[ym.m].toLowerCase()} (${r.vtAcertoDias}d)`,brl(r.vtAcerto))+"\n"}
+  else t+=L(`Vale-transporte (${r.vtUsadoDias} dias)`,brl(r.vtBruto))+"\n";
   if(r.feriasSaida)t+=L(`Férias proporcionais + 1/3 (${r.avosFS}/12)`,brl(r.feriasSaida))+"\n";
   if(r.d13){t+=L(r.d13.parcela==="saida"?`13º proporcional (${r.avos}/12)`:`13º salário – ${r.d13.parcela}ª parcela`,brl(r.d13.bruto))+"\n";if(r.d13.inss)t+=L("INSS sobre 13º",brl(-r.d13.inss))+"\n"}
   t+=L("TOTAL RECEBIDO",brl(r.transferir+r.pag13+r.feriasSaida))+"\n";
@@ -1051,8 +1087,9 @@ function viewRegras(){
   <section class="card"><h2>Vale-transporte</h2>
     <div class="grid-form">
       <div class="field"><label for="cfg-vtp">Desconto máximo (% do salário)</label><input type="number" step="0.1" id="cfg-vtp" data-cfg="vtPerc" value="${c.vtPerc}"></div>
-      <div class="field"><label for="cfg-vtr">Dias usados no cálculo</label><select id="cfg-vtr" data-cfg="vtReferencia"><option value="proximo" ${c.vtReferencia==="proximo"?"selected":""}>Próximo mês (pago adiantado)</option><option value="atual" ${c.vtReferencia==="atual"?"selected":""}>Mesmo mês</option></select></div>
+      <div class="field"><label for="cfg-vtr">Quando o VT é pago</label><select id="cfg-vtr" data-cfg="vtReferencia"><option value="proximo" ${c.vtReferencia==="proximo"?"selected":""}>Adiantado: a folha de outubro paga novembro</option><option value="atual" ${c.vtReferencia==="atual"?"selected":""}>No próprio mês: a folha de outubro paga o VT usado em outubro</option></select></div>
     </div>
+      <div class="muted small">O VT é devido só nos dias em que ela vai trabalhar (Lei 7.418/85 e Decreto 10.854/2021). Para doméstica, pode ser pago em dinheiro com recibo (LC 150/2015, art. 19). Ela paga no máximo o percentual acima sobre o salário básico, limitado ao VT que usou no mês; o resto é custo seu.<br>No modo adiantado, cada folha entrega o VT do mês seguinte e acerta o do mês atual: dias não usados (faltas, férias, dias após o desligamento) são descontados, e dias extras são completados.</div>
   </section>
   <section class="card"><h2>Faltas</h2>
     <label class="check"><input type="checkbox" data-cfgb="descontaDSR" ${c.descontaDSR!==false?"checked":""}>Descontar o DSR nas faltas sem justificativa</label>
