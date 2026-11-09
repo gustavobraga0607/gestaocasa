@@ -12,6 +12,7 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Faltas**, marcadas direto no calendário do mês: falta sem justificativa desconta o dia (1/30 do salário) e o **DSR** da semana; falta justificada (atestado) não desconta salário, só o vale-transporte do dia.
 - **DSR (descanso semanal remunerado)**: cada semana de segunda a domingo com falta sem justificativa perde o domingo e os feriados de folga daquela semana. Pode ser desligado em **Regras gerais**.
 - **Admissão e desligamento**: no mês de entrada e no de saída o salário é proporcional aos dias de vínculo (1/30 por dia), e a escala, o vale-transporte e o 13º respeitam essas datas. No mês do desligamento entram também o 13º proporcional e as férias proporcionais com 1/3. Aviso prévio e multa do FGTS não são calculados.
+- **Dias extras trabalhados** (fora da escala, como um sábado): cada dia é pago a 1/30 do salário mais o adicional informado (padrão 50%), entra na base do INSS e soma a passagem do dia no vale-transporte.
 - **Horas extras** com adicional configurável (padrão 50%).
 - **Guia DAE do eSocial**: INSS da empregada, INSS patronal 8%, GILRAT 0,8%, FGTS 8% e indenização compensatória 3,2% (só para registradas).
 - **13º salário** proporcional aos meses trabalhados: 1ª parcela em novembro (até 30/11) e 2ª em dezembro (até 20/12).
