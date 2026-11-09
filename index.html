@@ -84,6 +84,11 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 .cal .d.w{background:var(--accent);color:var(--surface);font-weight:500}
 .cal .d.f{background:var(--warn-soft);color:var(--warn);font-weight:600}
 .cal .d.fw{background:var(--warn);color:var(--surface);font-weight:600}
+.cal button.d{font:inherit;font-size:.72rem;padding:0;border:none;cursor:pointer;width:100%}
+.cal button.d:hover{outline:2px solid var(--fg);outline-offset:-2px}
+.cal .d.fi{background:var(--bad);color:var(--surface);font-weight:600}
+.cal .d.fj{background:var(--sunken);color:var(--fg);border:1px dashed var(--muted)}
+.cal .d.dsr{box-shadow:inset 0 0 0 2px var(--bad);color:var(--bad);font-weight:600}
 .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:.75rem;color:var(--muted)}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
 table.calc{width:100%;border-collapse:collapse;font-size:.92rem}
@@ -153,7 +158,7 @@ const uid=()=>Math.random().toString(36).slice(2,10);
 const DEFAULT_CFG={
   salarioMinimo:1621,
   inss:[{ate:1621,aliq:7.5},{ate:2902.84,aliq:9},{ate:4354.27,aliq:12},{ate:8475.55,aliq:14}],
-  vtPerc:6, vtReferencia:"proximo",
+  vtPerc:6, vtReferencia:"proximo", descontaDSR:true,
   carnaval:true, cinzas:false, corpus:true, vesperas:false, uf:"DF", capital:true,
   feriadosExtras:[],
   encargos:{patronal:8,gilrat:0.8,fgts:8,indeniz:3.2}
@@ -161,7 +166,7 @@ const DEFAULT_CFG={
 const NEW_EMP=()=>({nome:"",funcao:"Empregada doméstica",registrada:true,admissao:"",salario:1621,dias:[1,2,3,4,5],tarifa:5.00,viagensDia:2,
   descontaVT:true,descontaINSS:true,trabalhaFeriados:false,jornadaMensal:220,percHE:50,
   adicionalFixo:0,adicionalDesc:"",descontoFixo:0,descontoDesc:"",ordem:Date.now()});
-const NEW_ADJ=()=>({faltas:0,horasExtras:0,diasExtras:0,diasFerias:0,outrosAcresc:0,outrosDesc:0,obs:""});
+const NEW_ADJ=()=>({faltasDias:{},horasExtras:0,diasExtras:0,diasFerias:0,outrosAcresc:0,outrosDesc:0,obs:""});
 
 const today=new Date();
 let ym={y:today.getFullYear(),m:today.getMonth()};
@@ -261,18 +266,31 @@ function calcular(emp,y,m,adj,cfg){
   const previstos=dias.filter(x=>x.trabalha).length;
   const refY=cfg.vtReferencia==="proximo"?(m===11?y+1:y):y, refM=cfg.vtReferencia==="proximo"?(m+1)%12:m;
   const diasRef=diasMes(emp,refY,refM,cfg).filter(x=>x.trabalha).length;
-  const faltas=Math.max(0,n(adj.faltas));
+  // Faltas marcadas no calendário: "i" = sem justificativa (desconta dia + DSR), "j" = justificada (atestado, sem desconto)
+  const fd=adj.faltasDias||{};const diasTrab=new Set(dias.filter(x=>x.trabalha).map(x=>x.k));
+  const fInj=Object.keys(fd).filter(k=>fd[k]==="i"&&diasTrab.has(k)).sort();
+  const fJus=Object.keys(fd).filter(k=>fd[k]==="j"&&diasTrab.has(k)).sort();
+  const faltas=fInj.length, faltasJust=fJus.length;
+  // DSR: cada semana (segunda a domingo) com falta sem justificativa perde o domingo e os feriados de folga daquela semana
+  const dsr=[];
+  if(cfg.descontaDSR!==false){const doms=new Set();
+    for(const k of fInj){const d=new Date(k+"T12:00:00");d.setDate(d.getDate()+((7-d.getDay())%7));doms.add(key(d))}
+    for(const dk of [...doms].sort()){const dom=new Date(dk+"T12:00:00");
+      const Fd=feriados(dom.getFullYear(),cfg);dsr.push({k:dk,nome:"Repouso semanal (domingo)"+(Fd[dk]?" / "+Fd[dk]:"")});
+      for(let i=1;i<=6;i++){const d=new Date(dom);d.setDate(dom.getDate()-i);const k=key(d);const F=feriados(d.getFullYear(),cfg);
+        if(F[k]&&!((emp.dias||[]).includes(d.getDay())&&emp.trabalhaFeriados))dsr.push({k,nome:"Feriado da semana: "+F[k]})}}}
+  const dsrDias=dsr.length;
   // Férias: os dias de férias continuam pagos (salário do mês cheio) e somam 1/3 sobre eles
   const diasFerias=Math.min(30,Math.max(0,n(adj.diasFerias)));
   const feriasValor=r2(sal/30*diasFerias), terco=r2(feriasValor/3);
   const vtFerias=Math.round(diasFerias*previstos/new Date(y,m+1,0).getDate());
-  const vtDias=Math.max(0,diasRef-faltas-vtFerias+n(adj.diasExtras));
+  const vtDias=Math.max(0,diasRef-faltas-faltasJust-vtFerias+n(adj.diasExtras));
   const vtBruto=r2(vtDias*n(emp.viagensDia)*n(emp.tarifa));
-  const descFaltas=r2(sal/30*faltas);
+  const descFaltas=r2(sal/30*faltas), descDSR=r2(Math.min(sal/30*dsrDias,Math.max(0,sal-descFaltas)));
   const valorHora=n(emp.jornadaMensal)>0?sal/n(emp.jornadaMensal):0;
   const he=r2(valorHora*(1+n(emp.percHE)/100)*n(adj.horasExtras));
   const adicional=r2(n(emp.adicionalFixo)+n(adj.outrosAcresc));
-  const bruto=r2(sal-descFaltas+he+adicional+terco);
+  const bruto=r2(sal-descFaltas-descDSR+he+adicional+terco);
   const inss=reg&&emp.descontaINSS?calcINSS(Math.max(0,bruto),cfg.inss):0;
   const vtDesc=emp.descontaVT?r2(Math.min(sal*n(cfg.vtPerc)/100,vtBruto)):0;
   const outrosDesc=r2(n(emp.descontoFixo)+n(adj.outrosDesc));
@@ -296,7 +314,7 @@ function calcular(emp,y,m,adj,cfg){
   // Reserva mensal sugerida: 1/12 de 13º + 1/12 de férias com 1/3
   const reserva13=r2(sal/12), reservaFerias=r2(sal/12*4/3);
   const reservaEnc=reg?r2((reserva13+reservaFerias)*(n(e.patronal)+n(e.gilrat)+n(e.fgts)+n(e.indeniz))/100):0;
-  return {reg,sal,dias,previstos,diasRef,refY,refM,faltas,diasFerias,feriasValor,terco,vtFerias,vtDias,vtBruto,descFaltas,valorHora,he,adicional,bruto,inss,vtDesc,outrosDesc,liquido,vtEmpregador,enc,dae,transferir,
+  return {reg,sal,dias,previstos,diasRef,refY,refM,faltas,faltasJust,fInj,fJus,dsr,dsrDias,descDSR,diasFerias,feriasValor,terco,vtFerias,vtDias,vtBruto,descFaltas,valorHora,he,adicional,bruto,inss,vtDesc,outrosDesc,liquido,vtEmpregador,enc,dae,transferir,
     avos,total13,d13,pag13,dae13,reserva13,reservaFerias,reservaEnc,ferias:proxFerias(emp,y,m),
     custo:r2(liquido+vtBruto+dae+pag13+dae13),adj};
 }
@@ -382,22 +400,20 @@ function viewMes(){
         <div class="adj">
           <div class="label">Lançamentos de ${MESES[ym.m].toLowerCase()}</div>
           <div class="row2">
-            <div class="field"><label for="a-${e.id}-faltas">Faltas (dias)</label><input type="number" min="0" step="1" id="a-${e.id}-faltas" data-adj="faltas" value="${a.faltas}"></div>
             <div class="field"><label for="a-${e.id}-horasExtras">Horas extras</label><input type="number" min="0" step="0.5" id="a-${e.id}-horasExtras" data-adj="horasExtras" value="${a.horasExtras}"></div>
-          </div>
-          <div class="row2">
             <div class="field"><label for="a-${e.id}-diasFerias">Dias de férias</label><input type="number" min="0" max="30" step="1" id="a-${e.id}-diasFerias" data-adj="diasFerias" value="${a.diasFerias}"></div>
-            <div class="field"><label for="a-${e.id}-diasExtras">Dias extras de VT</label><input type="number" step="1" id="a-${e.id}-diasExtras" data-adj="diasExtras" value="${a.diasExtras}"></div>
           </div>
+          <div class="field"><label for="a-${e.id}-diasExtras">Dias extras de VT</label><input type="number" step="1" id="a-${e.id}-diasExtras" data-adj="diasExtras" value="${a.diasExtras}"></div>
           <div class="row2">
             <div class="field"><label for="a-${e.id}-outrosAcresc">Outros acréscimos (R$)</label><input type="number" min="0" step="0.01" id="a-${e.id}-outrosAcresc" data-adj="outrosAcresc" value="${a.outrosAcresc}"></div>
             <div class="field"><label for="a-${e.id}-outrosDesc">Outros descontos (R$)</label><input type="number" min="0" step="0.01" id="a-${e.id}-outrosDesc" data-adj="outrosDesc" value="${a.outrosDesc}"></div>
           </div>
           <div class="field"><label for="a-${e.id}-obs">Observação</label><input type="text" id="a-${e.id}-obs" data-adj="obs" value="${esc(a.obs)}" placeholder="Ex.: adiantamento dia 15"></div>
           <div>
-            <div class="label" style="margin-bottom:6px">Escala do mês</div>
+            <div class="label">Escala e faltas do mês</div>
+            <div class="muted small" style="margin:2px 0 8px">Toque no dia em que ela faltou. 1 toque: falta sem justificativa (desconta o dia e o DSR). 2 toques: falta justificada (atestado). 3 toques: limpa.</div>
             <div class="cal" id="cal-${e.id}"></div>
-            <div class="legend" style="margin-top:6px"><span><i style="background:var(--accent)"></i>Trabalha</span><span><i style="background:var(--warn-soft);border:1px solid var(--warn)"></i>Feriado (folga)</span><span><i style="background:var(--warn)"></i>Feriado trabalhado</span></div>
+            <div class="legend" style="margin-top:6px"><span><i style="background:var(--accent)"></i>Trabalha</span><span><i style="background:var(--warn-soft);border:1px solid var(--warn)"></i>Feriado (folga)</span><span><i style="background:var(--warn)"></i>Feriado trabalhado</span><span><i style="background:var(--bad)"></i>Falta</span><span><i style="background:var(--sunken);border:1px dashed var(--muted)"></i>Falta justificada</span><span><i style="border:1.5px solid var(--bad)"></i>DSR perdido</span></div>
           </div>
         </div>
         <div>
@@ -421,13 +437,20 @@ function updateOutputs(){
     const cal=document.getElementById("cal-"+e.id);
     if(cal){const first=new Date(ym.y,ym.m,1).getDay();let g=DIAS.map(d=>`<div class="h">${d[0]}</div>`).join("");
       for(let i=0;i<first;i++)g+=`<div></div>`;
-      for(const d of r.dias){const cls=d.fer?(d.trabalha?"fw":"f"):(d.trabalha?"w":"");g+=`<div class="d ${cls}" title="${d.fer?esc(d.fer):""}">${d.d}</div>`}
+      const fd=r.adj.faltasDias||{};const dsrK=new Set(r.dsr.map(x=>x.k));
+      for(const d of r.dias){let cls=d.fer?(d.trabalha?"fw":"f"):(d.trabalha?"w":"");const st=d.trabalha?fd[d.k]:null;
+        if(st==="i")cls="fi";else if(st==="j")cls="fj";if(dsrK.has(d.k))cls+=" dsr";
+        const tip=[d.fer,st==="i"?"Falta sem justificativa":st==="j"?"Falta justificada":"",dsrK.has(d.k)?"DSR descontado":""].filter(Boolean).join(" · ");
+        g+=d.trabalha?`<button type="button" class="d ${cls}" data-falta="${d.k}" title="${esc(tip)}" aria-label="Dia ${d.d}${tip?": "+esc(tip):""}">${d.d}</button>`:`<div class="d ${cls}" title="${esc(tip)}">${d.d}</div>`}
       cal.innerHTML=g}
     const t=document.getElementById("res-"+e.id);
     if(t){const ref=MESES[r.refM].toLowerCase()+(r.refY!==ym.y?" "+r.refY:"");
       let rows=`<tr class="sec"><td colspan="2" class="label">Salário</td></tr>
       <tr><td>Salário base</td><td>${brl(r.sal)}</td></tr>`;
-      if(r.faltas)rows+=`<tr><td>Faltas <span class="muted small">${r.faltas} dia(s) × ${brl(r.sal/30)}</span></td><td class="neg">${brl(-r.descFaltas)}</td></tr>`;
+      const dm=k=>`${k.slice(8)}/${k.slice(5,7)}`;
+      if(r.faltas)rows+=`<tr><td>Faltas sem justificativa <span class="muted small">${r.faltas} dia(s) × ${brl(r.sal/30)}</span><div class="muted small">${r.fInj.map(dm).join(", ")}</div></td><td class="neg">${brl(-r.descFaltas)}</td></tr>`;
+      if(r.dsrDias)rows+=`<tr><td>DSR perdido <span class="muted small">${r.dsrDias} dia(s) × ${brl(r.sal/30)}</span><div class="muted small">${r.dsr.map(x=>dm(x.k)+" "+esc(x.nome)).join("; ")}</div></td><td class="neg">${brl(-r.descDSR)}</td></tr>`;
+      if(r.faltasJust)rows+=`<tr><td>Faltas justificadas <span class="muted small">${r.fJus.map(dm).join(", ")} · sem desconto</span></td><td>${brl(0)}</td></tr>`;
       if(r.diasFerias)rows+=`<tr><td>1/3 de férias <span class="muted small">${r.diasFerias} dia(s) de férias = ${brl(r.feriasValor)}, já incluídos no salário</span></td><td>${brl(r.terco)}</td></tr>`;
       if(r.he)rows+=`<tr><td>Horas extras <span class="muted small">${n(r.adj.horasExtras)}h × ${brl(r.valorHora*(1+n(e.percHE)/100))}</span></td><td>${brl(r.he)}</td></tr>`;
       if(r.adicional)rows+=`<tr><td>${esc(e.adicionalDesc||"Acréscimos")}</td><td>${brl(r.adicional)}</td></tr>`;
@@ -438,7 +461,7 @@ function updateOutputs(){
       if(r.outrosDesc)rows+=`<tr><td>${esc(e.descontoDesc||"Outros descontos")}</td><td class="neg">${brl(-r.outrosDesc)}</td></tr>`;
       rows+=`<tr class="tot"><td>Salário líquido</td><td>${brl(r.liquido)}</td></tr>
       <tr class="sec"><td colspan="2" class="label">Vale-transporte (${ref})</td></tr>
-      <tr><td>${r.vtDias} dia(s) × ${n(e.viagensDia)} viagens × ${brl(n(e.tarifa))}<div class="muted small">${r.diasRef} dia(s) de escala${r.faltas?` − ${r.faltas} falta(s)`:""}${r.vtFerias?` − ${r.vtFerias} em férias`:""}${n(r.adj.diasExtras)?` ${n(r.adj.diasExtras)>0?"+":"−"} ${Math.abs(n(r.adj.diasExtras))} extra(s)`:""}</div></td><td>${brl(r.vtBruto)}</td></tr>
+      <tr><td>${r.vtDias} dia(s) × ${n(e.viagensDia)} viagens × ${brl(n(e.tarifa))}<div class="muted small">${r.diasRef} dia(s) de escala${r.faltas+r.faltasJust?` − ${r.faltas+r.faltasJust} falta(s)`:""}${r.vtFerias?` − ${r.vtFerias} em férias`:""}${n(r.adj.diasExtras)?` ${n(r.adj.diasExtras)>0?"+":"−"} ${Math.abs(n(r.adj.diasExtras))} extra(s)`:""}</div></td><td>${brl(r.vtBruto)}</td></tr>
       <tr><td>Parte paga por você</td><td>${brl(r.vtEmpregador)}</td></tr>`;
       if(r.d13){const d=r.d13;rows+=`<tr class="sec"><td colspan="2" class="label">13º salário · ${d.parcela}ª parcela (pagar até ${d.vence})</td></tr>
       <tr><td>13º integral <span class="muted small">${r.avos}/12 avos × ${brl(r.sal/12)}</span></td><td>${brl(r.total13)}</td></tr>
@@ -476,6 +499,7 @@ function recibo(id){
   let t=`RECIBO DE PAGAMENTO — ${MESES[ym.m].toUpperCase()} ${ym.y}\n${e.nome} — ${e.funcao}\n\n`;
   t+=L("Salário base",brl(r.sal))+"\n";
   if(r.faltas)t+=L(`Faltas (${r.faltas} dia)`,brl(-r.descFaltas))+"\n";
+  if(r.dsrDias)t+=L(`DSR perdido (${r.dsrDias} dia)`,brl(-r.descDSR))+"\n";
   if(r.diasFerias)t+=L(`1/3 de férias (${r.diasFerias} dias)`,brl(r.terco))+"\n";
   if(r.he)t+=L(`Horas extras (${n(r.adj.horasExtras)}h)`,brl(r.he))+"\n";
   if(r.adicional)t+=L(e.adicionalDesc||"Acréscimos",brl(r.adicional))+"\n";
@@ -547,6 +571,10 @@ function viewRegras(){
       <div class="field"><label for="cfg-vtr">Dias usados no cálculo</label><select id="cfg-vtr" data-cfg="vtReferencia"><option value="proximo" ${c.vtReferencia==="proximo"?"selected":""}>Próximo mês (pago adiantado)</option><option value="atual" ${c.vtReferencia==="atual"?"selected":""}>Mesmo mês</option></select></div>
     </div>
   </section>
+  <section class="card"><h2>Faltas</h2>
+    <label class="check"><input type="checkbox" data-cfgb="descontaDSR" ${c.descontaDSR!==false?"checked":""}>Descontar o DSR nas faltas sem justificativa</label>
+    <div class="muted small">Cada semana (segunda a domingo) com falta sem justificativa perde o domingo e os feriados de folga daquela semana, a 1/30 do salário por dia. Faltas justificadas, como atestado médico, não descontam salário nem DSR, só o vale-transporte do dia.</div>
+  </section>
   <section class="card"><h2>Feriados</h2><div class="muted small">Todos os feriados nacionais já entram sozinhos. Escolha o estado para incluir os feriados estaduais e da capital, e marque os pontos facultativos em que elas folgam.</div>
     <div class="grid-form">
       <div class="field"><label for="cfg-uf">Estado</label><select id="cfg-uf" data-cfg="uf"><option value="">Só feriados nacionais</option>${Object.entries(UFS).sort((a,b)=>a[1].n.localeCompare(b[1].n)).map(([k,u])=>`<option value="${k}" ${c.uf===k?"selected":""}>${u.n}</option>`).join("")}</select></div>
@@ -604,6 +632,10 @@ view.addEventListener("change",ev=>{
     if(fx.data){fx.data=t.checked?fx.data.slice(-5):`${ym.y}-${fx.data.slice(-5)}`}saveCfg();render();return}
 });
 view.addEventListener("click",ev=>{
+  const fb=ev.target.closest("button[data-falta]");
+  if(fb){const id=fb.closest("[data-emp]").dataset.emp;S.mes.ajustes=S.mes.ajustes||{};const a={...NEW_ADJ(),...(S.mes.ajustes[id]||{})};
+    const fd={...(a.faltasDias||{})};const k=fb.dataset.falta;fd[k]=!fd[k]?"i":fd[k]==="i"?"j":undefined;if(!fd[k])delete fd[k];
+    a.faltasDias=fd;S.mes.ajustes[id]=a;updateOutputs();saveMes();const nb=document.querySelector(`[data-emp="${id}"] button[data-falta="${k}"]`);if(nb)nb.focus();return}
   const b=ev.target.closest("button[data-act]");if(!b)return;const a=b.dataset.act;
   if(a==="goFunc"){tab="func";render()}
   else if(a==="addEmp"){const id=uid();S.emps[id]=NEW_EMP();write("funcionarias/"+id,S.emps[id]);render();setTimeout(()=>{const el=document.getElementById(`e-${id}-nome`);if(el)el.focus()},50)}

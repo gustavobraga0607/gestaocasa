@@ -9,7 +9,9 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Dias de trabalho do mês**, a partir da escala semanal de cada funcionária, descontando os feriados.
 - **Vale-transporte**: dias × viagens por dia × tarifa. Desconto de até 6% do salário; o resto é pago pelo empregador. Por padrão o VT é pago adiantado, com os dias do mês seguinte.
 - **INSS** pela tabela progressiva (só para registradas).
-- **Faltas** (1/30 do salário por dia) e **horas extras** (adicional configurável, padrão 50%).
+- **Faltas**, marcadas direto no calendário do mês: falta sem justificativa desconta o dia (1/30 do salário) e o **DSR** da semana; falta justificada (atestado) não desconta salário, só o vale-transporte do dia.
+- **DSR (descanso semanal remunerado)**: cada semana de segunda a domingo com falta sem justificativa perde o domingo e os feriados de folga daquela semana. Pode ser desligado em **Regras gerais**.
+- **Horas extras** com adicional configurável (padrão 50%).
 - **Guia DAE do eSocial**: INSS da empregada, INSS patronal 8%, GILRAT 0,8%, FGTS 8% e indenização compensatória 3,2% (só para registradas).
 - **13º salário** proporcional aos meses trabalhados: 1ª parcela em novembro (até 30/11) e 2ª em dezembro (até 20/12).
 - **Férias** com 1/3, data de vencimento do período e quanto guardar por mês para 13º e férias.
