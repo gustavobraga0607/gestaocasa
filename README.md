@@ -28,7 +28,7 @@ Cada funcionária tem uma lista livre de proventos e descontos do mês (gratific
 
 ## Adiantamentos
 
-Em cada funcionária, **+ Adiantamento** registra um valor pago antes do fechamento (data, valor e observação). Cada adiantamento gera um **recibo próprio em PDF**, em duas vias na mesma folha A4, e é abatido automaticamente do salário líquido na folha do mês. Adiantamentos não alteram a base do INSS.
+Em cada funcionária, **+ Adiantamento** registra um valor pago antes do fechamento (data, valor e observação). Cada adiantamento gera um **recibo próprio em PDF**, em duas vias na mesma folha A4 (que também sai junto, nas páginas finais, quando você baixa os recibos da folha), e é abatido automaticamente do salário líquido na folha do mês. Adiantamentos não alteram a base do INSS.
 
 ## Funcionárias sem registro
 

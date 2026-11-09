@@ -499,7 +499,7 @@ function viewMes(){
           <table class="calc" id="res-${e.id}"></table>
           <div class="pay" id="pay-${e.id}"></div>
           <div class="direitos" id="dir-${e.id}"></div>
-          <div class="actions"><button class="primary" data-act="pdf" data-id="${e.id}">Baixar recibo em PDF</button><button data-act="recibo" data-id="${e.id}">Copiar recibo em texto</button></div>
+          <div class="actions"><button class="primary" data-act="pdf" data-id="${e.id}">Baixar recibos em PDF</button><button data-act="recibo" data-id="${e.id}">Copiar recibo em texto</button></div>
           <div id="rec-${e.id}"></div>
         </div>
       </div></section>`;
@@ -689,6 +689,9 @@ async function baixarPDF(id,btn){
   const doc=new J({unit:"mm",format:"a4"});
   doc.setProperties({title:`Recibo ${e.nome} ${MESES[ym.m]} ${ym.y}`});
   desenharVia(doc,e,r,c,"1ª via – Empregador");doc.addPage();desenharVia(doc,e,r,c,"2ª via – Funcionária");
+  // Recibos dos adiantamentos do mês, um por página, no mesmo arquivo
+  const ads=((S.mes.ajustes||{})[id]||{}).adiantamentos||[];
+  ads.filter(x=>x&&n(x.valor)>0).sort((a,b)=>(a.data||"")<(b.data||"")?-1:1).forEach(x=>{doc.addPage();desenharAdiantamento(doc,e,c,x)});
   const slug=(e.nome||"funcionaria").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
   const filename=`recibo-${slug}-${ym.y}-${String(ym.m+1).padStart(2,"0")}.pdf`;
   await salvarPDF(doc,filename);
@@ -712,8 +715,12 @@ async function baixarAdiantamento(id,i){
   if(!J){toast("O gerador de PDF não carregou. Verifique a internet e recarregue a página.");return}
   const e=empsMes().find(x=>x.id===id);if(!e)return;const c=cfgMes();
   const x=((S.mes.ajustes||{})[id]||{}).adiantamentos?.[i];if(!x||!(n(x.valor)>0)){toast("Informe o valor do adiantamento antes de gerar o recibo.");return}
-  const valor=r2(n(x.valor));
   const doc=new J({unit:"mm",format:"a4"});doc.setProperties({title:`Adiantamento ${e.nome} ${fmtData(x.data)}`});
+  desenharAdiantamento(doc,e,c,x);
+  await salvarPDF(doc,`adiantamento-${slugNome(e.nome)}-${x.data||mesKey()}.pdf`);
+}
+function desenharAdiantamento(doc,e,c,x){
+  const valor=r2(n(x.valor));
   const W=210,M=16,CW=W-2*M,AC=[44,73,176],INK=[24,32,46],MUT=[91,101,120],LN=[213,219,229],SUN=[236,240,247];
   const T=(txt,xx,yy,o={})=>{doc.setFont("helvetica",o.b?"bold":"normal");doc.setFontSize(o.s||9);doc.setTextColor(...(o.c||INK));doc.text(String(txt),xx,yy,o.a?{align:o.a}:undefined)};
   const via=(top,nome)=>{
@@ -741,7 +748,6 @@ async function baixarAdiantamento(id,i){
   T("✂  recorte aqui".replace("✂  ",""),W/2,147,{s:6.5,c:MUT,a:"center"});
   via(148.5,"2ª via – Funcionária");
   T(`Gerado pela Folha da Casa em ${new Date().toLocaleDateString("pt-BR")}`,M,292,{s:7,c:MUT});
-  await salvarPDF(doc,`adiantamento-${slugNome(e.nome)}-${x.data||mesKey()}.pdf`);
 }
 function recibo(id){
   const e=empsMes().find(x=>x.id===id);if(!e)return;const c=cfgMes();const r=calcular(e,ym.y,ym.m,(S.mes.ajustes||{})[id],c);
