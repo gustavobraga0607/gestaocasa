@@ -161,6 +161,14 @@ async function arquivo(req, b) {
   return { url, assinado: !!doc.signed_file };
 }
 
+// Verificação da configuração: só leituras, nada é criado. Não devolve dados, apenas se cada chave funciona.
+async function teste() {
+  const out = { ok: true, zapsign: !!process.env.ZAPSIGN_TOKEN, supabase: !!process.env.SUPABASE_SECRET_KEY, sandbox: process.env.ZAPSIGN_SANDBOX === "1" };
+  if (out.zapsign) { try { await zap("/docs/?page=1"); out.zapsign_ok = true; } catch (e) { out.zapsign_ok = false; out.zapsign_erro = e.message.slice(0, 120); } }
+  if (out.supabase) { try { await db("/rest/v1/recibos_publicados?select=id&limit=1"); out.supabase_ok = true; } catch (e) { out.supabase_ok = false; out.supabase_erro = e.message.slice(0, 120); } }
+  return out;
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") { res.status(405).json({ erro: "Use POST." }); return; }
@@ -173,7 +181,7 @@ module.exports = async (req, res) => {
       case "status": out = await statusCasa(req, b); break;
       case "status_func": out = await statusFunc(b); break;
       case "arquivo": out = await arquivo(req, b); break;
-      case "teste": out = { ok: true, zapsign: !!process.env.ZAPSIGN_TOKEN, supabase: !!process.env.SUPABASE_SECRET_KEY, sandbox: process.env.ZAPSIGN_SANDBOX === "1" }; break;
+      case "teste": out = await teste(); break;
       default: throw new Erro(400, "Ação desconhecida.");
     }
     res.status(200).json(out);
