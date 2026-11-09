@@ -12,6 +12,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Folha da Casa">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Folha da Casa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -71,6 +73,18 @@ nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--
 .emp-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--line)}
 .chip{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:99px;background:var(--sunken);color:var(--muted);font-weight:500;margin-left:8px;vertical-align:middle}
 .chip.informal{background:var(--warn-soft);color:var(--warn)}
+body.tela-login nav.tabs,body.tela-login .monthbar,body.tela-login #saveinfo{display:none}
+.login-wrap{display:flex;justify-content:center;padding-block:24px}
+.login{width:100%;max-width:420px;gap:12px}
+.login form{display:flex;flex-direction:column;gap:12px}
+.login-icon{width:52px;height:52px;border-radius:14px;background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M12 3 2 11h3v9h14v-9h3z'/%3E%3C/svg%3E") center/30px no-repeat}
+#lg-msg.erro{color:var(--bad)}#lg-msg.ok{color:var(--good)}
+.login-links{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.login-links button{padding:6px 0;color:var(--accent)}
+.conta-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.membros{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.membros li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);min-width:0;overflow-wrap:anywhere}
+.add-membro{display:flex;gap:8px;flex-wrap:wrap}.add-membro input{flex:1 1 200px}
 .folha-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
 .folha-bar>div{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 260px}
 .folha-bar .estado{font-weight:600}
@@ -428,7 +442,7 @@ function setInfo(t){document.getElementById("saveinfo").textContent=t}
 async function write(path,data){
   if(mode==="local"){lsSave();setInfo("Salvo neste navegador.");return}
   if(!db)return;
-  try{await db.doc(path).set(data);setInfo("Salvo.")}
+  try{await db.doc(path).set(data);setInfo(nuvem?"Salvo na nuvem.":"Salvo.")}
   catch(e){setInfo("Não foi possível salvar: "+(e&&e.message||"erro")+". Você tem permissão de edição nesta página?")}
 }
 function saveCfg(){debounce("cfg",()=>write("config/geral",S.cfg))}
@@ -451,10 +465,143 @@ function subscribeMes(){
   render();
 }
 
+/* ---------- Nuvem (Supabase): login e dados compartilhados por casa ----------
+   Ativa só quando a página define window.FOLHA_NUVEM = {url, anonKey} e carrega o supabase-js.
+   Guarda cada registro (config/geral, funcionarias/<id>, meses/<AAAA-MM>) como uma linha da tabela "registros". */
+let sb=null, nuvem=null, loginModo="entrar", loginEmail="", membros=[];
+function nuvemAtiva(){return !!(window.FOLHA_NUVEM&&window.FOLHA_NUVEM.url&&window.FOLHA_NUVEM.anonKey&&window.supabase&&window.supabase.createClient)}
+function supaDB(cliente,casaId){
+  const cache=new Map(), ultimo=new Map(), ouvintes=new Set();let carregado=false;
+  const CK="folha-nuvem-cache-"+casaId;
+  const snapDoc=(path,pend)=>({id:path.split("/").pop(),exists:cache.has(path),data:()=>cache.has(path)?JSON.parse(JSON.stringify(cache.get(path))):undefined,metadata:{hasPendingWrites:!!pend,fromCache:false}});
+  const snapCol=(pref)=>{const docs=[...cache.keys()].filter(k=>k.startsWith(pref+"/")&&k.split("/").length===2).sort().map(k=>snapDoc(k));return {docs,size:docs.length,empty:!docs.length,metadata:{hasPendingWrites:false}}};
+  const avisar=(path,pend)=>{for(const o of ouvintes){if(o.t==="doc"&&(path==null||o.p===path))o.cb(snapDoc(o.p,pend));if(o.t==="col"&&(path==null||path.startsWith(o.p+"/")))o.cb(snapCol(o.p))}};
+  const guardarCache=()=>{try{localStorage.setItem(CK,JSON.stringify([...cache]))}catch(e){}};
+  const pronto=(async()=>{
+    const {data,error}=await cliente.from("registros").select("chave,dados").eq("casa_id",casaId);
+    if(error){let c=[];try{c=JSON.parse(localStorage.getItem(CK)||"[]")}catch(e){}c.forEach(([k,v])=>cache.set(k,v));carregado=true;avisar(null);throw error}
+    data.forEach(r=>cache.set(r.chave,r.dados));carregado=true;guardarCache();avisar(null);
+  })();
+  cliente.channel("casa-"+casaId).on("postgres_changes",{event:"*",schema:"public",table:"registros",filter:"casa_id=eq."+casaId},p=>{
+    const linha=p.eventType==="DELETE"?p.old:p.new;if(!linha||!linha.chave)return;
+    if(p.eventType==="DELETE"){if(!cache.has(linha.chave))return;cache.delete(linha.chave)}
+    else{const js=JSON.stringify(linha.dados);if(ultimo.get(linha.chave)===js||JSON.stringify(cache.get(linha.chave))===js)return;cache.set(linha.chave,linha.dados)}
+    guardarCache();avisar(linha.chave);
+  }).subscribe();
+  const api={
+    pronto,casaId,
+    todos:()=>Object.fromEntries([...cache].map(([k,v])=>[k,JSON.parse(JSON.stringify(v))])),
+    vazio:()=>cache.size===0,
+    doc(path){return {
+      async set(d){const v=JSON.parse(JSON.stringify(d));cache.set(path,v);const js=JSON.stringify(v);ultimo.set(path,js);guardarCache();avisar(path,true);
+        const {error}=await cliente.from("registros").upsert({casa_id:casaId,chave:path,dados:v,atualizado_em:new Date().toISOString()});if(error)throw error},
+      async delete(){cache.delete(path);guardarCache();avisar(path,true);const {error}=await cliente.from("registros").delete().eq("casa_id",casaId).eq("chave",path);if(error)throw error},
+      onSnapshot(cb){const o={t:"doc",p:path,cb};ouvintes.add(o);if(carregado)cb(snapDoc(path));return ()=>ouvintes.delete(o)}
+    }},
+    collection(pref){return {onSnapshot(cb){const o={t:"col",p:pref,cb};ouvintes.add(o);if(carregado)cb(snapCol(pref));return ()=>ouvintes.delete(o)}}},
+    async importar(regs){const linhas=Object.entries(regs).map(([chave,dados])=>({casa_id:casaId,chave,dados,atualizado_em:new Date().toISOString()}));
+      if(!linhas.length)return;const {error}=await cliente.from("registros").upsert(linhas);if(error)throw error;
+      linhas.forEach(l=>{cache.set(l.chave,l.dados);ultimo.set(l.chave,JSON.stringify(l.dados))});guardarCache();avisar(null)}
+  };
+  return api;
+}
+const msgAuth=e=>{const m=(e&&e.message)||"";
+  if(/Invalid login credentials/i.test(m))return "E-mail ou senha incorretos.";
+  if(/Email not confirmed/i.test(m))return "Confirme seu e-mail pelo link que enviamos antes de entrar.";
+  if(/already registered|already been registered/i.test(m))return "Este e-mail já tem conta. Use “Entrar”.";
+  if(/at least 6|Password should be/i.test(m))return "A senha precisa ter pelo menos 6 caracteres.";
+  if(/rate limit|too many/i.test(m))return "Muitas tentativas seguidas. Espere alguns minutos e tente de novo.";
+  if(/Failed to fetch|NetworkError|network/i.test(m))return "Sem conexão com a internet. Conecte-se e tente de novo.";
+  return "Não foi possível concluir: "+m};
+async function iniciarNuvem(){
+  sb=window.supabase.createClient(window.FOLHA_NUVEM.url,window.FOLHA_NUVEM.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  sb.auth.onAuthStateChange((ev,sess)=>{
+    if(ev==="PASSWORD_RECOVERY"){loginModo="nova";mode="login";render();return}
+    if(ev==="SIGNED_IN"&&sess&&mode==="login"&&loginModo!=="nova")setTimeout(()=>abrirCasa(sess),0);
+    if(ev==="SIGNED_OUT"){mode="login";loginModo="entrar";render()}
+  });
+  const {data}=await sb.auth.getSession();
+  if(data&&data.session&&!/type=recovery/.test(location.hash))abrirCasa(data.session);
+  else if(mode!=="login"){mode="login";render()}
+}
+let abrindo=null;
+function abrirCasa(sess){if(nuvem&&nuvem.user===sess.user.id)return Promise.resolve();if(!abrindo)abrindo=abrirCasa_(sess).finally(()=>{abrindo=null});return abrindo}
+async function abrirCasa_(sess){
+  mode="loading";render();
+  try{
+    let {data:casas,error}=await sb.from("casas").select("id,nome,criado_em").order("criado_em");
+    if(error)throw error;
+    if(!casas.length){const r=await sb.from("casas").insert({nome:"Minha casa"}).select("id,nome,criado_em");if(r.error)throw r.error;casas=r.data}
+    let escolhida=casas[0];try{const pref=localStorage.getItem("folha-casa-atual");const c=casas.find(x=>x.id===pref);if(c)escolhida=c}catch(e){}
+    nuvem={user:sess.user.id,email:sess.user.email,casa:escolhida,casas};
+    db=supaDB(sb,escolhida.id);mode="db";
+    try{await db.pronto}catch(e){document.getElementById("status").innerHTML=`<div class="banner warn">Sem conexão com a nuvem agora. Mostrando os últimos dados salvos neste aparelho; alterações não serão gravadas até a internet voltar.</div>`}
+    db.doc("config/geral").onSnapshot(s=>{S.cfg=s.exists?s.data():null;S.cfgLoaded=true;softRender()});
+    db.collection("funcionarias").onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.emps=o;S.empsLoaded=true;softRender()});
+    subscribeMes();carregarMembros();oferecerMigracao();
+  }catch(e){mode="login";render();const m=document.getElementById("lg-msg");if(m)m.textContent="Não foi possível abrir seus dados: "+((e&&e.message)||"erro")+". Confira se o banco de dados foi configurado."}
+}
+async function carregarMembros(){if(!sb||!nuvem)return;const {data}=await sb.from("casa_membros").select("email,adicionado_em").eq("casa_id",nuvem.casa.id).order("adicionado_em");membros=data||[];if(tab==="func"&&!appHasFocus())render()}
+function oferecerMigracao(){
+  const o=lsLoad();const temLocal=o&&o.emps&&Object.keys(o.emps).length;
+  if(!temLocal||!db.vazio())return;
+  document.getElementById("status").innerHTML=`<div class="banner info install-bn"><div><b>Encontramos dados salvos neste aparelho</b> (${Object.keys(o.emps).length} funcionária(s)). Envie para a nuvem para vê-los em qualquer lugar.</div><button type="button" class="primary" data-act="migrar">Enviar para a nuvem</button></div>`;
+}
+async function importarParaNuvem(o){
+  const regs={};if(o.cfg)regs["config/geral"]=o.cfg;
+  Object.entries(o.emps||{}).forEach(([id,e])=>regs["funcionarias/"+id]=e);
+  Object.entries(o.meses||{}).forEach(([k,m])=>{if(m&&Object.keys(m).length)regs["meses/"+k]=m});
+  await db.importar(regs);
+  S.mes=(o.meses||{})[S.mesKey]?{ajustes:{},...o.meses[S.mesKey]}:S.mes;
+}
+function viewLogin(){
+  const t={entrar:"Entrar",criar:"Criar conta",senha:"Recuperar senha",nova:"Definir nova senha"}[loginModo];
+  return `<div class="login-wrap"><section class="card login">
+    <div class="login-icon" aria-hidden="true"></div>
+    <h2>${t}</h2>
+    <div class="muted small">${loginModo==="nova"?"Escolha a nova senha da sua conta.":loginModo==="senha"?"Enviaremos um link para você criar uma nova senha.":"Seus dados ficam salvos na nuvem e aparecem em qualquer aparelho em que você entrar."}</div>
+    <form id="login-form" novalidate>
+      ${loginModo!=="nova"?`<div class="field"><label for="lg-email">E-mail</label><input id="lg-email" type="email" autocomplete="email" inputmode="email" required value="${esc(loginEmail)}"></div>`:""}
+      ${loginModo!=="senha"?`<div class="field"><label for="lg-senha">${loginModo==="nova"?"Nova senha":"Senha"}</label><input id="lg-senha" type="password" minlength="6" required autocomplete="${loginModo==="entrar"?"current-password":"new-password"}"></div>`:""}
+      <button class="primary" type="submit" id="lg-btn">${{entrar:"Entrar",criar:"Criar conta",senha:"Enviar link",nova:"Salvar nova senha"}[loginModo]}</button>
+      <div id="lg-msg" class="small" role="status"></div>
+    </form>
+    <div class="login-links">
+      ${loginModo==="entrar"?`<button type="button" class="ghost" data-act="loginModo" data-m="criar">Ainda não tem conta? <b>Criar conta</b></button><button type="button" class="ghost" data-act="loginModo" data-m="senha">Esqueci a senha</button>`:""}
+      ${loginModo==="criar"||loginModo==="senha"?`<button type="button" class="ghost" data-act="loginModo" data-m="entrar">Já tenho conta. <b>Entrar</b></button>`:""}
+    </div>
+  </section></div>`;
+}
+async function enviarLogin(){
+  const em=document.getElementById("lg-email"),se=document.getElementById("lg-senha"),msg=document.getElementById("lg-msg"),btn=document.getElementById("lg-btn");
+  const email=em?em.value.trim():"",senha=se?se.value:"";if(em)loginEmail=email;
+  msg.className="small";
+  if(em&&!/^\S+@\S+\.\S+$/.test(email)){msg.textContent="Digite um e-mail válido.";msg.classList.add("erro");em.focus();return}
+  if(se&&senha.length<6){msg.textContent="A senha precisa ter pelo menos 6 caracteres.";msg.classList.add("erro");se.focus();return}
+  btn.disabled=true;msg.textContent="Aguarde…";
+  try{
+    if(loginModo==="entrar"){const {data,error}=await sb.auth.signInWithPassword({email,password:senha});if(error)throw error;await abrirCasa(data.session)}
+    else if(loginModo==="criar"){const {data,error}=await sb.auth.signUp({email,password:senha,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;
+      if(data.session)await abrirCasa(data.session);else{msg.textContent=`Conta criada. Enviamos um link de confirmação para ${email}. Confirme pelo e-mail e depois entre aqui.`;msg.classList.add("ok");loginModo="entrar";btn.disabled=false;btn.textContent="Entrar"}}
+    else if(loginModo==="senha"){const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;msg.textContent=`Se existir uma conta com ${email}, você vai receber um link para criar uma nova senha.`;msg.classList.add("ok");btn.disabled=false}
+    else if(loginModo==="nova"){const {data,error}=await sb.auth.updateUser({password:senha});if(error)throw error;loginModo="entrar";history.replaceState(null,"",location.pathname);const s=(await sb.auth.getSession()).data.session;if(s)await abrirCasa(s)}
+  }catch(e){msg.textContent=msgAuth(e);msg.classList.add("erro");btn.disabled=false}
+}
+function viewConta(){
+  if(!nuvem)return "";
+  return `<section class="card"><h2>Conta e acesso</h2>
+    <div class="conta-linha"><div>Conectado como <b>${esc(nuvem.email)}</b><div class="muted small">Os dados ficam salvos na nuvem e sincronizam em todos os aparelhos.</div></div><button type="button" data-act="sair">Sair</button></div>
+    <div class="label" style="margin-top:4px">Pessoas com acesso a esta casa</div>
+    <ul class="membros">${membros.map(m=>`<li><span>${esc(m.email)}${m.email===String(nuvem.email).toLowerCase()?' <span class="muted small">(você)</span>':""}</span>${m.email===String(nuvem.email).toLowerCase()?"":`<button type="button" class="ghost danger" data-act="rmMembro" data-email="${esc(m.email)}">Remover</button>`}</li>`).join("")||'<li class="muted small">Carregando…</li>'}</ul>
+    <div class="add-membro"><input type="email" id="novo-membro" placeholder="email@exemplo.com" aria-label="E-mail da pessoa" autocomplete="off"><button type="button" class="primary" data-act="addMembro">Dar acesso</button></div>
+    <div class="muted small" id="membro-msg">A pessoa cria uma conta com esse e-mail e passa a ver e editar a mesma folha.</div>
+  </section>`;
+}
+
 async function start(){
   render();
   const timeout=setTimeout(()=>{if(mode==="loading"){useLocal("Não consegui conectar ao armazenamento compartilhado. Os dados estão sendo salvos só neste navegador.")}},10000);
-  if(!window.claude||!window.claude.use){clearTimeout(timeout);useLocal("Os dados ficam salvos neste navegador. Faça um backup em Regras gerais de vez em quando para não perder nada.","info");return}
+  if(!window.claude||!window.claude.use){clearTimeout(timeout);if(nuvemAtiva()){iniciarNuvem().catch(e=>{mode="login";render()});return}useLocal("Os dados ficam salvos neste navegador. Faça um backup em Regras gerais de vez em quando para não perder nada.","info");return}
   let d=null;try{d=window.claude&&window.claude.use?await window.claude.use("db"):null}catch(e){d=null}
   clearTimeout(timeout);
   if(mode!=="loading")return;
@@ -478,6 +625,8 @@ function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab?"true":"false"));
   document.getElementById("prev").parentElement.hidden=(tab==="func");
   const v=document.getElementById("view");
+  document.body.classList.toggle("tela-login",mode==="login");
+  if(mode==="login"){v.innerHTML=viewLogin();const f=document.getElementById(loginModo==="nova"?"lg-senha":"lg-email");if(f&&!loginEmail)f.focus();return}
   if(mode==="loading"||!S.empsLoaded){v.innerHTML=`<div class="empty"><div class="muted">Carregando suas regras…</div></div>`;return}
   if(tab==="mes")v.innerHTML=viewMes();
   else if(tab==="func")v.innerHTML=viewFunc();
@@ -843,7 +992,7 @@ function recibo(id){
 function viewFunc(){
   const emps=empList(),c=cfg();
   const cpfOk=v=>!v||v.length<14||cpfValido(v);
-  let h=`<div style="display:flex;flex-direction:column;gap:16px">
+  let h=`<div style="display:flex;flex-direction:column;gap:16px">${viewConta()}
   <section class="card"><h2>Empregador</h2><div class="muted small">Seus dados saem no cabeçalho e na assinatura do recibo.</div>
     <div class="grid-form">
       <div class="field"><label for="cfg-en">Nome completo</label><input type="text" id="cfg-en" data-cfg="empregadorNome" value="${esc(c.empregadorNome||"")}" placeholder="Seu nome completo" autocomplete="name"></div>
@@ -930,7 +1079,7 @@ function viewRegras(){
       ${[["patronal","INSS patronal (%)"],["gilrat","Seguro acidente – GILRAT (%)"],["fgts","FGTS (%)"],["indeniz","Indenização compensatória (%)"]].map(([k,l])=>`<div class="field"><label for="enc-${k}">${l}</label><input type="number" step="0.01" id="enc-${k}" data-enc="${k}" value="${c.encargos[k]}"></div>`).join("")}
     </div>
   </section>
-  ${mode==="local"&&!(window.claude&&window.claude.use)?`<section class="card"><h2>Backup dos dados</h2><div class="muted small">Seus cadastros e lançamentos ficam guardados só neste navegador. Exporte um arquivo de backup para guardar ou levar para outro aparelho.</div>
+  ${!(window.claude&&window.claude.use)?`<section class="card"><h2>Backup dos dados</h2><div class="muted small">${nuvem?"Seus dados já ficam na nuvem. Se quiser, exporte uma cópia em arquivo para guardar.":"Seus cadastros e lançamentos ficam guardados só neste navegador. Exporte um arquivo de backup para guardar ou levar para outro aparelho."}</div>
     <div class="actions" style="margin-top:0"><button class="primary" data-act="exportar">Exportar backup</button><label class="btnlike" for="imp-file">Importar backup</label><input type="file" id="imp-file" accept="application/json,.json" hidden></div><div id="imp-msg" class="small muted"></div></section>`:""}
   <div class="muted small">Valores padrão de 2026. Confira sempre no eSocial antes de pagar; este app é uma calculadora e não substitui a folha oficial.</div>
   </div>`;
@@ -944,6 +1093,9 @@ document.getElementById("prev").onclick=()=>{ym.m--;if(ym.m<0){ym.m=11;ym.y--}su
 document.getElementById("next").onclick=()=>{ym.m++;if(ym.m>11){ym.m=0;ym.y++}subscribeMes()};
 
 const view=document.getElementById("view");
+view.addEventListener("submit",ev=>{if(ev.target.id==="login-form"){ev.preventDefault();enviarLogin()}});
+document.getElementById("status").addEventListener("click",async ev=>{const b=ev.target.closest("[data-act=migrar]");if(!b)return;b.disabled=true;b.textContent="Enviando…";
+  try{await importarParaNuvem(lsLoad());document.getElementById("status").innerHTML="";toast("Dados enviados para a nuvem");render()}catch(e){b.disabled=false;b.textContent="Tentar de novo";toast("Não foi possível enviar: "+((e&&e.message)||"erro"))}});
 view.addEventListener("input",ev=>{
   const t=ev.target;const sec=t.closest("[data-emp]");
   if(folhaSalva()&&tab==="mes")return;
@@ -974,7 +1126,7 @@ view.addEventListener("change",ev=>{
   if(t.dataset.fx&&t.type==="checkbox"){S.cfg={...cfg()};S.cfg.feriadosExtras=c2(S.cfg.feriadosExtras);const fx=S.cfg.feriadosExtras[+t.dataset.fx];
     if(fx.data){fx.data=t.checked?fx.data.slice(-5):`${ym.y}-${fx.data.slice(-5)}`}saveCfg();render();return}
 });
-view.addEventListener("click",ev=>{
+view.addEventListener("click",async ev=>{
   const fb=ev.target.closest("button[data-falta]");
   if(fb){if(folhaSalva())return;const id=fb.closest("[data-emp]").dataset.emp;S.mes.ajustes=S.mes.ajustes||{};const a={...NEW_ADJ(),...(S.mes.ajustes[id]||{})};
     const fd={...(a.faltasDias||{})};const k=fb.dataset.falta;fd[k]=!fd[k]?"i":fd[k]==="i"?"j":undefined;if(!fd[k])delete fd[k];
@@ -986,6 +1138,15 @@ view.addEventListener("click",ev=>{
   else if(a==="nodel"){render()}
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
+  else if(a==="loginModo"){loginModo=b.dataset.m;const em=document.getElementById("lg-email");if(em)loginEmail=em.value.trim();render()}
+  else if(a==="sair"){nuvem=null;db=null;S.cfg=null;S.emps={};S.mes={};S.empsLoaded=false;try{localStorage.removeItem("folha-casa-atual")}catch(e){}sb.auth.signOut()}
+  else if(a==="addMembro"){const inp=document.getElementById("novo-membro");const em=(inp.value||"").trim().toLowerCase();const msg=document.getElementById("membro-msg");
+    if(!/^\S+@\S+\.\S+$/.test(em)){msg.textContent="Digite um e-mail válido.";inp.focus();return}
+    b.disabled=true;const {error}=await sb.from("casa_membros").insert({casa_id:nuvem.casa.id,email:em});b.disabled=false;
+    if(error){msg.textContent=/duplicate/i.test(error.message)?"Esse e-mail já tem acesso.":"Não foi possível dar acesso: "+error.message;return}
+    inp.value="";toast("Acesso liberado para "+em);carregarMembros()}
+  else if(a==="rmMembro"){const em=b.dataset.email;b.disabled=true;const {error}=await sb.from("casa_membros").delete().eq("casa_id",nuvem.casa.id).eq("email",em);
+    if(error){toast("Não foi possível remover: "+error.message);b.disabled=false;return}toast("Acesso removido");carregarMembros()}
   else if(a==="view"){const sec=b.closest("[data-emp]");empView[sec.dataset.emp]=b.dataset.v;sec.dataset.view=b.dataset.v;
     sec.querySelectorAll(".emp-sw button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===b.dataset.v?"true":"false"))}
   else if(a==="pdf"){baixarPDF(b.dataset.id,b)}
@@ -1012,7 +1173,9 @@ view.addEventListener("click",ev=>{
   else if(a==="copy"){const ta=document.getElementById("rt-"+b.dataset.id);
     const fb=()=>{ta.focus();ta.select();toast("Texto selecionado. Use Copiar do seu aparelho.")};
     try{navigator.clipboard.writeText(ta.value).then(()=>toast("Recibo copiado"),fb)}catch(e){fb()}}
-  else if(a==="exportar"){const o=lsLoad();o.cfg=S.cfg;o.emps=S.emps;o.exportadoEm=new Date().toISOString();
+  else if(a==="exportar"){let o=lsLoad();o.cfg=S.cfg;o.emps=S.emps;
+    if(nuvem&&db&&db.todos){const t=db.todos();o={cfg:t["config/geral"]||null,emps:{},meses:{}};Object.entries(t).forEach(([k,v])=>{if(k.startsWith("funcionarias/"))o.emps[k.slice(13)]=v;if(k.startsWith("meses/"))o.meses[k.slice(6)]=v})}
+    o.exportadoEm=new Date().toISOString();
     const url=URL.createObjectURL(new Blob([JSON.stringify(o,null,2)],{type:"application/json"}));const l=document.createElement("a");l.href=url;l.download=`folha-da-casa-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
   else if(a==="addInss"){S.cfg={...cfg()};S.cfg.inss=[...c2(S.cfg.inss),{ate:0,aliq:0}];saveCfg();render()}
   else if(a==="delInss"){S.cfg={...cfg()};S.cfg.inss=c2(S.cfg.inss).filter((_,i)=>i!==+b.dataset.i);saveCfg();render()}
@@ -1021,6 +1184,7 @@ view.addEventListener("click",ev=>{
 });
 view.addEventListener("change",ev=>{const t=ev.target;if(t.id!=="imp-file"||!t.files[0])return;
   const fr=new FileReader();fr.onload=()=>{try{const o=JSON.parse(fr.result);if(!o||typeof o!=="object"||!o.emps)throw 0;
+    if(nuvem&&db&&db.importar){importarParaNuvem(o).then(()=>{render();toast("Backup enviado para a nuvem")},e=>{document.getElementById("imp-msg").textContent="Não foi possível enviar para a nuvem: "+((e&&e.message)||"erro")});return}
     localStorage.setItem(LS,JSON.stringify(o));S.cfg=o.cfg||null;S.emps=o.emps||{};S.mes=(o.meses||{})[S.mesKey]||{};render();toast("Backup importado")}
     catch(e){document.getElementById("imp-msg").textContent="Este arquivo não é um backup da Folha da Casa. Escolha o arquivo .json exportado por este app."}};fr.readAsText(t.files[0])});
 function mascaraCPF(v){const d=String(v||"").replace(/\D/g,"").slice(0,11);return d.replace(/^(\d{3})(\d)/,"$1.$2").replace(/^(\d{3})\.(\d{3})(\d)/,"$1.$2.$3").replace(/\.(\d{3})(\d{1,2})$/,".$1-$2")}

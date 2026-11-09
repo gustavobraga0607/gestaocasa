@@ -45,18 +45,20 @@ Na aba **Cadastros** ficam o nome e o CPF do empregador e os dados de cada funci
 
 ## Onde os dados ficam
 
-Fora do Claude, os dados ficam salvos no navegador (localStorage). Use **Regras gerais → Exportar backup** para guardar uma cópia e **Importar backup** para levar para outro aparelho.
+Com a nuvem configurada, cada pessoa entra com e-mail e senha e os dados ficam no Supabase, sincronizados em tempo real entre computador e celular. Cada casa pode ter várias pessoas com acesso (aba **Cadastros → Conta e acesso**).
 
-## No celular
+Sem a nuvem configurada (`config.js` em branco), o app guarda os dados no navegador. Ao entrar na nuvem pela primeira vez, ele oferece enviar esses dados.
 
-O app tem layout próprio para celular: o mês fica fixo no topo, as abas ficam na parte de baixo da tela e cada funcionária alterna entre **Resumo** e **Lançamentos**.
+**Exportar backup** e **Importar backup** (em **Regras gerais**) continuam disponíveis para guardar uma cópia em arquivo.
 
-Ele também pode ser instalado na tela inicial e funciona sem internet depois da primeira visita:
+### Configurar a nuvem (Supabase)
 
-- **Android (Chrome):** toque em **Instalar** no aviso do app, ou no menu ⋮ → **Instalar app**.
-- **iPhone (Safari):** toque em **Compartilhar** → **Adicionar à Tela de Início**.
+1. Crie um projeto gratuito em [supabase.com](https://supabase.com).
+2. Em **SQL Editor → New query**, cole o conteúdo de `supabase/schema.sql` e clique em **Run**.
+3. Em **Authentication → URL Configuration**, coloque o endereço do app em **Site URL**.
+4. Em **Project Settings → API**, copie a **Project URL** e a chave **anon public** para o arquivo `config.js`.
 
-Os dados ficam no aparelho. Para levar os cadastros do computador para o celular, use **Exportar backup** num e **Importar backup** no outro.
+A chave *anon* é pública por natureza; quem protege os dados são as regras do banco (Row Level Security), que só deixam cada pessoa ver as casas às quais tem acesso.
 
 ## Como rodar
 
