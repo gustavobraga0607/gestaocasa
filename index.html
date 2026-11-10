@@ -105,6 +105,33 @@ details summary{cursor:pointer;color:var(--accent);font-size:.9rem;padding:4px 0
 .doc-st{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
 .doc-acoes{display:flex;gap:4px;flex-shrink:0}
 .docs-lista li{align-items:flex-start}
+nav.tabs .ts{display:none}
+.badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:var(--bad);color:var(--surface);font-size:.72rem;font-weight:700;line-height:18px;text-align:center;margin-left:4px;vertical-align:1px}
+.badge[hidden]{display:none}
+.gest-resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.gest-tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;border-radius:12px;background:var(--surface)}
+.gest-tile .v{font-size:1.4rem;font-weight:600}
+.gest-tile.ativo{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.gest-tile.alerta .v{color:var(--bad)}
+.gest-lista{display:flex;flex-direction:column;gap:10px}
+.gest-item{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.gest-item.meu_visto{border-left:4px solid var(--warn)}
+.gest-item.recusado{border-left:4px solid var(--bad)}
+.gest-item.concluido{border-left:4px solid var(--good)}
+.gest-cab{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.gest-tit{font-weight:600}
+.gest-acoes{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.gest-acoes .btnlike,.gest-acoes button{padding:6px 12px;min-height:0;font-size:.88rem}
+.ok-chip{background:var(--good-soft)!important;color:var(--good)!important;margin-left:0}
+.bad-chip{background:var(--warn-soft)!important;color:var(--bad)!important;margin-left:0}
+.doc-st .chip{margin-left:0}
+.gest-valores{border-top:1px dashed var(--line);padding-top:6px}
+@media (max-width:640px){nav.tabs .tl{display:none}nav.tabs .ts{display:inline}nav.tabs button{font-size:.8rem;padding-inline:2px;position:relative}
+  nav.tabs .badge{margin-left:3px;min-width:16px;line-height:16px;font-size:.66rem;padding:0 4px}
+  .gest-resumo{display:flex;overflow-x:auto;gap:6px;margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px)));padding-inline:max(16px,env(safe-area-inset-left,0px));scrollbar-width:none}
+  .gest-tile{flex:0 0 auto;flex-direction:row;align-items:baseline;gap:6px;padding:8px 12px;border-radius:99px;min-height:0}
+  .gest-tile .v{font-size:1rem}
+  .gest-cab{flex-direction:column}.gest-acoes{width:100%}.gest-acoes .primary-link{flex:1;text-align:center}}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -238,10 +265,11 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
   </header>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="mes" aria-selected="true">Cálculo do mês</button>
+    <button role="tab" data-tab="mes" aria-selected="true"><span class="tl">Cálculo do mês</span><span class="ts">Mês</span></button>
     <button role="tab" data-tab="func" aria-selected="false">Cadastros</button>
     <button role="tab" data-tab="recibos" aria-selected="false">Recibos</button>
-    <button role="tab" data-tab="regras" aria-selected="false">Regras gerais</button>
+    <button role="tab" data-tab="assin" aria-selected="false" hidden><span class="tl">Assinaturas</span><span class="ts">Assinar</span><span class="badge" hidden>0</span></button>
+    <button role="tab" data-tab="regras" aria-selected="false"><span class="tl">Regras gerais</span><span class="ts">Regras</span></button>
   </nav>
 
   <div id="status"></div>
@@ -661,9 +689,10 @@ async function carregarAcessos(){if(!sb||!nuvem)return;const {data,error}=await 
   if(error){acessos=null;return}acessos={};(data||[]).forEach(a=>acessos[a.func_id]=a);if(!appHasFocus())render()}
 async function carregarPublicados(){if(!sb||!nuvem)return;
   const {data,error}=await sb.from("recibos_publicados").select("id,func_id,competencia,status,assinado_em,emp_sign_url,emp_assinado_em,criado_em,tipo:dados->>tipo,titulo:dados->>titulo,rescisao:dados->>rescisao").eq("casa_id",nuvem.casa.id).neq("status","cancelado").order("criado_em",{ascending:false}).limit(300);
-  if(!error){publicados=data||[];if(!appHasFocus())render()}}
+  if(!error){publicados=data||[];atualizarAbaAssinaturas();if(!appHasFocus())render()}}
 async function sincronizarAssinaturas(forcar){
   if(!nuvem||(!forcar&&Date.now()-ultimaSync<60000))return;ultimaSync=Date.now();
+  if(forcar)await carregarPublicados();
   if(!publicados.some(p=>p.status==="pendente"||(p.status==="assinado"&&p.emp_sign_url&&!p.emp_assinado_em)))return;
   try{await api({acao:"status",casa_id:nuvem.casa.id});await carregarPublicados()}catch(e){}
 }
@@ -901,6 +930,71 @@ async function enviarDoc(id,b){
   catch(err){toast("Não foi possível enviar: "+err.message);b.disabled=false;b.textContent="Enviar para assinatura"}
 }
 
+/* ---------- Gestão de assinaturas (empregador) ---------- */
+const gest={filtro:"meu_visto",func:"",tipo:"",abertos:{},valores:{}};
+function nomeFunc(id){const e=S.emps[id];return e&&e.nome?e.nome:"Funcionária removida"}
+function situacao(p){
+  if(p.status==="recusado")return "recusado";
+  if(p.status==="pendente")return "funcionaria";
+  if(p.emp_sign_url&&!p.emp_assinado_em)return "meu_visto";
+  return "concluido";
+}
+function contagemGest(){const c={meu_visto:0,funcionaria:0,concluido:0,recusado:0};
+  publicados.forEach(p=>{c[situacao(p)]++;if(p.status==="pendente"&&p.emp_sign_url&&!p.emp_assinado_em)c.meu_visto++});return c}
+function precisaVisto(p){return !!p.emp_sign_url&&!p.emp_assinado_em&&p.status!=="recusado"}
+function viewAssinaturas(){
+  if(!nuvem)return `<div class="empty"><h2>Assinaturas</h2><div class="muted">Disponível quando os dados estão na nuvem.</div></div>`;
+  const c=contagemGest();
+  const filtros=[["meu_visto","Aguardando seu visto",c.meu_visto],["funcionaria","Aguardando a funcionária",c.funcionaria],["concluido","Concluídos",c.concluido],["recusado","Recusados",c.recusado],["todos","Todos",publicados.length]];
+  let L=publicados.filter(p=>gest.filtro==="todos"||(gest.filtro==="meu_visto"?precisaVisto(p):situacao(p)===gest.filtro));
+  if(gest.func)L=L.filter(p=>p.func_id===gest.func);
+  if(gest.tipo)L=L.filter(p=>gest.tipo==="documento"?p.tipo==="documento":p.tipo!=="documento");
+  const funcs=[...new Set(publicados.map(p=>p.func_id))];
+  const fmtD=d=>d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+  const titulo=p=>p.tipo==="documento"?(p.titulo||"Documento"):`Recibo de ${MESES[+p.competencia.slice(5)-1].toLowerCase()}/${p.competencia.slice(0,4)}`;
+  let h=`<div style="display:flex;flex-direction:column;gap:14px">
+    <div class="conta-linha"><div><h2>Assinaturas</h2><div class="muted small">Recibos e documentos enviados para a ZapSign. Os assinados ficam guardados aqui mesmo depois do prazo da funcionária.</div></div><button type="button" data-act="syncGest">Atualizar status</button></div>
+    <div class="gest-resumo">${filtros.map(([k,l,q])=>`<button type="button" class="gest-tile ${gest.filtro===k?"ativo":""} ${k==="meu_visto"&&q?"alerta":""}" data-act="gestFiltro" data-f="${k}"><span class="v num">${q}</span><span class="small">${l}</span></button>`).join("")}</div>
+    <div class="grid-form">
+      <div class="field"><label for="g-func">Funcionária</label><select id="g-func" data-gest="func"><option value="">Todas</option>${funcs.map(id=>`<option value="${esc(id)}" ${gest.func===id?"selected":""}>${esc(nomeFunc(id))}</option>`).join("")}</select></div>
+      <div class="field"><label for="g-tipo">Tipo</label><select id="g-tipo" data-gest="tipo"><option value="">Recibos e documentos</option><option value="recibo" ${gest.tipo==="recibo"?"selected":""}>Só recibos</option><option value="documento" ${gest.tipo==="documento"?"selected":""}>Só documentos</option></select></div>
+    </div>`;
+  if(gest.filtro==="meu_visto"&&L.length)h+=`<div class="banner info small">Cada visto abre a ZapSign numa aba nova: assine (sem selfie) e volte aqui. A lista se atualiza sozinha quando você volta.</div>`;
+  if(!L.length)h+=`<div class="empty"><div class="muted">${gest.filtro==="meu_visto"?"Nenhum visto pendente. Tudo em dia.":"Nada por aqui com esses filtros."}</div></div>`;
+  else h+=`<div class="gest-lista">${L.map(p=>{
+    const ela=p.status==="assinado"?`<span class="chip ok-chip">✓ ${esc(nomeFunc(p.func_id))} assinou ${fmtD(p.assinado_em)}</span>`:p.status==="recusado"?`<span class="chip bad-chip">${esc(nomeFunc(p.func_id))} recusou</span>`:`<span class="chip informal">Aguardando ${esc(nomeFunc(p.func_id))}</span>`;
+    const visto=!p.emp_sign_url?`<span class="chip">Sem visto</span>`:p.emp_assinado_em?`<span class="chip ok-chip">✓ Seu visto ${fmtD(p.emp_assinado_em)}</span>`:`<span class="chip informal">Falta seu visto</span>`;
+    const aberto=gest.abertos[p.id];
+    return `<article class="gest-item ${situacao(p)}">
+      <div class="gest-cab"><div style="min-width:0"><div class="gest-tit">${esc(titulo(p))}</div><div class="muted small">${esc(nomeFunc(p.func_id))} · enviado ${fmtD(p.criado_em)}${p.tipo==="documento"&&p.rescisao==="true"?" · rescisão":""}</div></div>
+        <div class="gest-acoes">
+          ${precisaVisto(p)?`<a class="btnlike primary-link" href="${esc(p.emp_sign_url)}" target="_blank" rel="noopener" data-visto="${p.id}">Dar visto</a>`:""}
+          <span id="gpdf-${p.id}"><button type="button" data-act="gestPdf" data-pid="${p.id}">${p.status==="assinado"&&(p.emp_assinado_em||!p.emp_sign_url)?"PDF assinado":"Ver PDF"}</button></span>
+          ${p.tipo!=="documento"?`<button type="button" class="ghost" data-act="gestValores" data-pid="${p.id}" aria-expanded="${!!aberto}">${aberto?"Ocultar valores":"Valores"}</button>`:""}
+          ${p.status==="pendente"&&p.tipo==="documento"?`<button type="button" class="ghost danger" data-act="cancelarDoc" data-pid="${p.id}">Cancelar envio</button>`:""}
+        </div></div>
+      <div class="doc-st">${ela}${visto}</div>
+      ${aberto?`<div class="gest-valores" id="gval-${p.id}">${gestValoresHtml(p.id)}</div>`:""}
+    </article>`}).join("")}</div>`;
+  return h+`</div>`;
+}
+function gestValoresHtml(id){
+  const D=gest.valores[id];if(D===undefined)return `<div class="muted small">Carregando…</div>`;if(!D)return `<div class="muted small">Valores indisponíveis.</div>`;
+  const it=D.itens||{prov:[],desc:[],outros:[]};const linha=(t,v,cls="")=>`<tr><td>${esc(t)}</td><td class="${cls}">${brl(v)}</td></tr>`;
+  return `<table class="calc">${(it.prov||[]).map(x=>linha(x[0],x[2])).join("")}${(it.desc||[]).map(x=>linha(x[0],-x[2],"neg")).join("")}
+    <tr class="tot"><td>Salário líquido</td><td>${brl(D.liquido||0)}</td></tr>${(it.outros||[]).map(x=>linha(x[0],x[2],x[2]<0?"neg":"")).join("")}
+    <tr class="tot"><td>Total recebido</td><td>${brl(D.total||0)}</td></tr></table>`;
+}
+async function carregarValores(id){
+  const {data}=await sb.from("recibos_publicados").select("dados").eq("id",id).limit(1);
+  gest.valores[id]=data&&data[0]?data[0].dados:null;const box=document.getElementById("gval-"+id);if(box)box.innerHTML=gestValoresHtml(id);
+}
+function atualizarAbaAssinaturas(){
+  const b=document.querySelector('nav.tabs button[data-tab="assin"]');if(!b)return;
+  b.hidden=!nuvem;const q=nuvem?contagemGest().meu_visto:0;
+  const badge=b.querySelector(".badge");if(badge){badge.textContent=q;badge.hidden=!q}
+}
+
 async function start(){
   render();
   const timeout=setTimeout(()=>{if(mode==="loading"){useLocal("Não consegui conectar ao armazenamento compartilhado. Os dados estão sendo salvos só neste navegador.")}},10000);
@@ -925,8 +1019,10 @@ function appHasFocus(){const a=document.activeElement;return a&&document.getElem
 function softRender(){if(appHasFocus()){updateOutputs()}else render()}
 function render(){
   document.getElementById("mlabel").textContent=MESES[ym.m]+" "+ym.y;
+  if(tab==="assin"&&!nuvem&&mode!=="loading"&&mode!=="login"&&mode!=="func")tab="mes";
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab?"true":"false"));
-  document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos");
+  atualizarAbaAssinaturas();
+  document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos"||tab==="assin");
   const v=document.getElementById("view");
   document.body.classList.toggle("tela-login",mode==="login"||mode==="func");
   if(mode==="func"){v.innerHTML=viewFuncionaria();return}
@@ -934,6 +1030,7 @@ function render(){
   if(mode==="loading"||!S.empsLoaded){v.innerHTML=`<div class="empty"><div class="muted">Carregando suas regras…</div></div>`;return}
   if(tab==="mes"){v.innerHTML=viewMes();if(nuvem)sincronizarAssinaturas()}
   else if(tab==="func")v.innerHTML=viewFunc();
+  else if(tab==="assin"){v.innerHTML=viewAssinaturas()}
   else if(tab==="recibos"){v.innerHTML=viewRecibos();if(!lote.prev&&!lote.carregando)atualizarPrevLote()}
   else v.innerHTML=viewRegras();
   if(tab==="mes"&&folhaSalva())v.querySelectorAll("section.emp .adj input, section.emp .adj select, section.emp .adj button:not(.keep)").forEach(x=>x.disabled=true);
@@ -1537,7 +1634,7 @@ function viewRegras(){
 
 /* ---------- Eventos ---------- */
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200)}
-document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
+document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
 document.getElementById("prev").onclick=()=>{ym.m--;if(ym.m<0){ym.m=11;ym.y--}subscribeMes()};
 document.getElementById("next").onclick=()=>{ym.m++;if(ym.m>11){ym.m=0;ym.y++}subscribeMes()};
 
@@ -1568,6 +1665,7 @@ view.addEventListener("input",ev=>{
 });
 view.addEventListener("change",ev=>{
   {const t=ev.target;
+   if(t.dataset.gest){gest[t.dataset.gest]=t.value;render();return}
    if(t.dataset.docFile){lerPDF(t.dataset.docFile,t.files[0]);return}
    if(t.dataset.docTipo){const id=t.dataset.docTipo;const tp=TIPOS_DOC.find(x=>x[0]===t.value);docForm[id]={tipo:t.value,titulo:tp?tp[1]:"Documento"};render();return}}
   {const t=ev.target;
@@ -1598,6 +1696,12 @@ view.addEventListener("click",async ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="gerarLote"){gerarLote(b)}
+  else if(a==="gestFiltro"){gest.filtro=b.dataset.f;render()}
+  else if(a==="syncGest"){b.disabled=true;b.textContent="Atualizando…";ultimaSync=0;await sincronizarAssinaturas(true);await carregarPublicados();render();toast("Status atualizado")}
+  else if(a==="gestValores"){const id=b.dataset.pid;gest.abertos[id]=!gest.abertos[id];render();if(gest.abertos[id]&&gest.valores[id]===undefined)carregarValores(id)}
+  else if(a==="gestPdf"){const id=b.dataset.pid,txt=b.textContent;b.disabled=true;b.textContent="Gerando link…";
+    try{const r=await api({acao:"arquivo",casa_id:nuvem.casa.id,id});document.getElementById("gpdf-"+id).innerHTML=`<a class="btnlike" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir ${r.assinado?"PDF assinado":"PDF"}</a>`}
+    catch(err){toast(err.message);b.disabled=false;b.textContent=txt}}
   else if(a==="enviarDoc"){enviarDoc(b.dataset.id,b)}
   else if(a==="cancelarDoc"){const ok=await confirmar("Cancelar o envio?","<p>O documento deixa de aparecer para ela e o pedido de assinatura é cancelado na ZapSign.</p>","Cancelar envio","Voltar");if(!ok)return;
     b.disabled=true;try{await api({acao:"cancelar_doc",casa_id:nuvem.casa.id,id:b.dataset.pid});await carregarPublicados();render();toast("Envio cancelado")}catch(err){toast(err.message);b.disabled=false}}
@@ -1678,6 +1782,7 @@ function c2(x){return JSON.parse(JSON.stringify(x||[]))}
 view.addEventListener("focusout",()=>{setTimeout(()=>{if(!appHasFocus()&&tab==="mes")updateOutputs()},0)});
 
 try{const t=localStorage.getItem("folha-tab");if(t)tab=t}catch(_){}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&nuvem&&(tab==="assin"||tab==="mes")){ultimaSync=0;sincronizarAssinaturas(true).then(()=>{if(!appHasFocus())render()})}});
 window.__calc={lote,prepararLote,baixarAdiantamento,baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
 start();
 })();

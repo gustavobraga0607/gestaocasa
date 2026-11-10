@@ -32,6 +32,8 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
 - **Documentos de rescisão** (termo de rescisão, aviso prévio e pedido de demissão) só podem ser assinados depois que todos os recibos dela estiverem assinados. A regra é aplicada no servidor: o link de assinatura só é liberado quando não há recibo pendente.
 - Um documento ainda não assinado pode ter o envio cancelado. **Editar folha** nunca cancela documentos, só os recibos do mês.
 
+- A aba **Assinaturas** (só com a nuvem ligada) reúne todos os recibos e documentos enviados, de todas as funcionárias e meses. Mostra quantos aguardam o seu visto, quantos aguardam a funcionária, os concluídos e os recusados; filtra por funcionária e tipo; e em cada item tem **Dar visto**, **Ver PDF** (original ou assinado), os valores do recibo e o cancelamento de documentos pendentes. Os itens assinados ficam guardados aqui mesmo depois que somem da área da funcionária. A aba mostra um contador de vistos pendentes, e a lista se atualiza ao voltar da ZapSign.
+
 ### Configuração
 
 1. No Supabase, rode `supabase/funcionarias.sql` no SQL Editor (depois do `schema.sql`).
