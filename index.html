@@ -203,6 +203,36 @@ section.card.travado .days label{cursor:default}
 .pnl-duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
 .lista-simples{list-style:none;margin:0;padding:0}.lista-simples li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px dashed var(--line)}
 .atrasada-li span:first-child{color:var(--bad);font-weight:600}
+.mob-nav{display:none}
+.ponto-agora .pa-lista{display:flex;flex-direction:column;gap:6px}
+.pa-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;text-align:left;padding:10px 12px;border-radius:12px;background:var(--surface);width:100%}
+.pa-txt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.pa-pt{width:12px;height:12px;border-radius:50%;background:var(--line)}
+.pa-pt.trab{background:var(--good);box-shadow:0 0 0 4px var(--good-soft)}.pa-pt.almoco{background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}.pa-pt.saiu{background:var(--muted)}
+.pa-h{font-size:1.15rem;font-weight:600;text-align:right}.pa-agora{display:block;font-family:var(--f-body);font-size:.72rem;font-weight:400;color:var(--muted)}
+@media (max-width:640px){
+  body.com-mob nav.tabs{display:none}
+  body.com-mob .mob-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-top:1px solid var(--line);
+    padding:0 max(4px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(4px,env(safe-area-inset-left,0px))}
+  .mob-nav button{border:none;border-radius:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 10px;font-size:.72rem;color:var(--muted);position:relative;border-top:3px solid transparent;min-height:56px}
+  .mob-nav .mi{font-size:1.25rem;line-height:1}
+  .mob-nav button[aria-current="page"]{color:var(--accent);border-top-color:var(--accent);font-weight:600}
+  .mob-nav .badge{position:absolute;top:4px;left:calc(50% + 6px);margin:0;min-width:16px;line-height:16px;font-size:.66rem;padding:0 4px}
+  body.com-mob .rot-subs,body.com-mob .rot-tit{display:none}
+  body.com-mob .pnl-kpis{grid-template-columns:1fr 1fr;gap:8px}
+  body.com-mob .pnl-kpis .tile .v{font-size:1.5rem}
+  body.com-mob .pnl-filtros{grid-template-columns:1fr 1fr}
+  body.com-mob .pnl-filtros .field:last-child{grid-column:1/-1}
+  body.com-mob .fotos-grid{grid-template-columns:1fr 1fr}
+  body.com-mob .foto-info{padding:8px;font-size:.85rem}
+}
+.gaveta-fundo{align-items:flex-end;padding:0}
+.gaveta{background:var(--surface);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:8px 12px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:4px;box-shadow:0 -10px 40px rgb(0 0 0/.25)}
+.gaveta-alca{width:40px;height:4px;border-radius:99px;background:var(--line);margin:4px auto 8px}
+.gaveta-item{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:none;border-radius:12px;padding:12px;background:transparent;min-height:56px}
+.gaveta-item>span:first-child{display:flex;flex-direction:column;gap:2px}
+.gaveta-item.ativo{background:var(--accent-soft)}
+.gaveta-item.sair b{color:var(--bad)}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -343,6 +373,13 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
     <button role="tab" data-tab="assin" aria-selected="false" hidden><span class="tl">Assinaturas</span><span class="ts">Assinar</span><span class="badge" hidden>0</span></button>
     <button role="tab" data-tab="rotina" aria-selected="false" hidden>Rotina<span class="badge" hidden>0</span></button>
     <button role="tab" data-tab="regras" aria-selected="false"><span class="tl">Regras gerais</span><span class="ts">Regras</span></button>
+  </nav>
+  <nav class="mob-nav" aria-label="Navegação">
+    <button type="button" data-mob="painel"><span class="mi" aria-hidden="true">▦</span>Painel</button>
+    <button type="button" data-mob="ponto"><span class="mi" aria-hidden="true">◷</span>Ponto</button>
+    <button type="button" data-mob="tarefas"><span class="mi" aria-hidden="true">☑</span>Tarefas</button>
+    <button type="button" data-mob="recados"><span class="mi" aria-hidden="true">✉</span>Recados<span class="badge" hidden>0</span></button>
+    <button type="button" data-mob="mais"><span class="mi" aria-hidden="true">☰</span>Mais<span class="badge" hidden>0</span></button>
   </nav>
 
   <div id="status"></div>
@@ -678,6 +715,7 @@ async function abrirCasa_(sess){
     try{await db.pronto}catch(e){document.getElementById("status").innerHTML=`<div class="banner warn">Sem conexão com a nuvem agora. Mostrando os últimos dados salvos neste aparelho; alterações não serão gravadas até a internet voltar.</div>`}
     db.doc("config/geral").onSnapshot(s=>{S.cfg=s.exists?s.data():null;S.cfgLoaded=true;softRender()});
     db.collection("funcionarias").onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.emps=o;S.empsLoaded=true;softRender()});
+    if(ehCelular()){tab="rotina";rot.sub="painel"}
     subscribeMes();carregarMembros();oferecerMigracao();carregarAcessos();carregarPublicados().then(()=>sincronizarAssinaturas(true));carregarNaoLidos();
   }catch(e){mode="login";render();const m=document.getElementById("lg-msg");if(m)m.textContent="Não foi possível abrir seus dados: "+((e&&e.message)||"erro")+". Confira se o banco de dados foi configurado."}
 }
@@ -1194,6 +1232,28 @@ async function carregarNaoLidos(){
   if(!sb||!nuvem)return;const {data,error}=await sb.from("recados").select("func_id").eq("casa_id",nuvem.casa.id).eq("de","func").is("lido_em",null).limit(500);
   if(error)return;rot.naoLidos={};(data||[]).forEach(r=>rot.naoLidos[r.func_id]=(rot.naoLidos[r.func_id]||0)+1);atualizarAbaRotina();if(tab==="rotina"&&!appHasFocus())render();
 }
+/* Celular do empregador: barra de baixo com a rotina e o resto guardado em "Mais" */
+function ehCelular(){return window.matchMedia("(max-width:640px)").matches}
+function atualizarMobNav(){
+  const on=!!nuvem&&mode!=="login"&&mode!=="func"&&mode!=="loading";document.body.classList.toggle("com-mob",on);if(!on)return;
+  document.querySelectorAll(".mob-nav [data-mob]").forEach(b=>{const k=b.dataset.mob;const at=k==="mais"?tab!=="rotina":(tab==="rotina"&&rot.sub===k);b.setAttribute("aria-current",at?"page":"false")});
+  const br=document.querySelector('.mob-nav [data-mob="recados"] .badge');const q=totalNaoLidos();if(br){br.textContent=q;br.hidden=!q}
+  const bm=document.querySelector('.mob-nav [data-mob="mais"] .badge');const v=publicados.length?contagemGest().meu_visto:0;if(bm){bm.textContent=v;bm.hidden=!v}
+}
+function abrirMais(){
+  const v=publicados.length?contagemGest().meu_visto:0;
+  const itens=[["mes","Cálculo do mês","Salário, VT, 13º e salvar a folha"],["func","Cadastros","Funcionárias, acesso ao app e documentos"],["recibos","Recibos","PDF de vários meses"],["assin","Assinaturas","Vistos e documentos assinados",v],["regras","Regras gerais","INSS, VT, feriados e backup"]];
+  const d=document.createElement("div");d.className="modal-fundo gaveta-fundo";d.setAttribute("role","dialog");d.setAttribute("aria-modal","true");d.setAttribute("aria-label","Mais opções");
+  d.innerHTML=`<div class="gaveta"><div class="gaveta-alca" aria-hidden="true"></div>${itens.map(([k,l,dsc,b])=>`<button type="button" class="gaveta-item ${tab===k?"ativo":""}" data-ir="${k}"><span><b>${l}</b><span class="muted small">${dsc}</span></span>${b?`<span class="badge">${b}</span>`:"<span aria-hidden='true'>›</span>"}</button>`).join("")}
+    <button type="button" class="gaveta-item sair" data-ir="__sair"><span><b>Sair da conta</b><span class="muted small">${esc(nuvem?nuvem.email:"")}</span></span></button></div>`;
+  d.addEventListener("click",ev=>{const b=ev.target.closest("[data-ir]");if(ev.target===d){d.remove();return}if(!b)return;d.remove();
+    if(b.dataset.ir==="__sair"){sairEmpregador(true);return}tab=b.dataset.ir;try{localStorage.setItem("folha-tab",tab)}catch(e){}if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});render();window.scrollTo(0,0)});
+  document.body.appendChild(d);
+}
+document.querySelector(".mob-nav").addEventListener("click",ev=>{const b=ev.target.closest("[data-mob]");if(!b)return;const k=b.dataset.mob;
+  if(k==="mais"){abrirMais();return}
+  tab="rotina";rot.sub=k;rot.tarefas=rot.ponto=rot.recados=null;rot.ajuste=false;rot.descId=null;if(k==="painel")pnl.dados=null;
+  try{localStorage.setItem("folha-tab","rotina")}catch(e){}render();carregarRotina();window.scrollTo(0,0)});
 function atualizarAbaRotina(){const b=document.querySelector('nav.tabs button[data-tab="rotina"]');if(!b)return;b.hidden=!nuvem;const q=totalNaoLidos();const bd=b.querySelector(".badge");if(bd){bd.textContent=q;bd.hidden=!q}}
 function padroesRotina(){
   if(!rot.func||!S.emps[rot.func]){const e=empList()[0];rot.func=e?e.id:""}
@@ -1234,9 +1294,9 @@ function viewRotina(){
   if((pend===null||pend===undefined)&&!rot.carregando&&!pnl.carregando&&!rot.erro)setTimeout(carregarRotina,0);
   const subs=[["painel","Painel",0],["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",totalNaoLidos()]];
   let h=`<div style="display:flex;flex-direction:column;gap:14px">
-    <div class="conta-linha"><h2>Rotina</h2>
+    <div class="conta-linha"><h2 class="rot-tit">Rotina</h2>
       <div class="field" style="min-width:200px" ${rot.sub==="painel"?"hidden":""}><label for="rt-func">Funcionária</label><select id="rt-func" data-rot="func">${emps.map(e=>`<option value="${e.id}" ${rot.func===e.id?"selected":""}>${esc(e.nome||"Sem nome")}${rot.naoLidos[e.id]?` (${rot.naoLidos[e.id]} recado${rot.naoLidos[e.id]>1?"s":""} novo${rot.naoLidos[e.id]>1?"s":""})`:""}</option>`).join("")}</select></div></div>
-    <div class="func-abas" role="tablist">${subs.map(([k,l,b])=>`<button type="button" role="tab" data-act="rotSub" data-s="${k}" aria-selected="${rot.sub===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
+    <div class="func-abas rot-subs" role="tablist">${subs.map(([k,l,b])=>`<button type="button" role="tab" data-act="rotSub" data-s="${k}" aria-selected="${rot.sub===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
   if(rot.sub==="painel")return h+viewPainel()+`</div>`;
   if(rot.erro)return h+`<div class="banner warn">${esc(rot.erro)}</div></div>`;
   const e=S.emps[rot.func]||{};
@@ -1358,7 +1418,7 @@ async function carregarPainel(){
   try{
     const [tq,pq]=await Promise.all([
       sb.from("tarefas").select("id,func_id,texto,data,dias,ativa,criado_em,desativada_em").eq("casa_id",c),
-      sb.from("registros_ponto").select("func_id,momento,desconsiderado").eq("casa_id",c).gte("momento",new Date(ini+"T00:00:00").toISOString())]);
+      sb.from("registros_ponto").select("func_id,momento,tipo,origem,desconsiderado").eq("casa_id",c).gte("momento",new Date(ini+"T00:00:00").toISOString())]);
     if(tq.error)throw tq.error;
     const tarefas=tq.data||[];let feitas=[];
     if(tarefas.length){const fq=await sb.from("tarefas_feitas").select("tarefa_id,data,feita_em,hora_informada,foto,revisao,revisao_obs,revisado_em").in("tarefa_id",tarefas.map(t=>t.id)).gte("data",ini);if(fq.error)throw fq.error;feitas=fq.data||[]}
@@ -1371,7 +1431,7 @@ async function carregarPainel(){
       const conta=dk===hoje||trabalhou[t.func_id+"|"+dk]||!usaPonto[t.func_id];if(!conta)continue;
       const f=fmap[chaveOc(t.id,dk)];const feita=f&&f.revisao!=="refazer";
       oc.push({t,data:dk,f,feita,hoje:dk===hoje,atrasoFeito:feita&&diaLocal(f.feita_em)>dk,aberta:!feita});}
-    pnl.dados={oc,dias,hoje,tarefas,feitas,trabalhou};pnl.urls={};
+    pnl.dados={oc,dias,hoje,tarefas,feitas,trabalhou,pontoHoje:(pq.data||[]).filter(r=>diaLocal(r.momento)===hoje)};pnl.urls={};
     // Fotos para revisão: links temporários
     const fotos=feitas.filter(f=>f.foto).map(f=>f.foto);
     if(fotos.length){const {data}=await sb.storage.from("tarefas").createSignedUrls(fotos.slice(0,200),3600);(data||[]).forEach(x=>{if(x.signedUrl)pnl.urls[x.path]=x.signedUrl})}
@@ -1380,12 +1440,13 @@ async function carregarPainel(){
 }
 function viewPainel(){
   const D=pnl.dados;
-  let h=`<div class="grid-form pnl-filtros">
+  const filtros=`<div class="grid-form pnl-filtros">
       <div class="field"><label for="pn-per">Período</label><select id="pn-per" data-pnl="periodo"><option value="1" ${pnl.periodo==="1"?"selected":""}>Hoje</option><option value="7" ${pnl.periodo==="7"?"selected":""}>Últimos 7 dias</option><option value="14" ${pnl.periodo==="14"?"selected":""}>Últimos 14 dias</option><option value="30" ${pnl.periodo==="30"?"selected":""}>Últimos 30 dias</option></select></div>
       <div class="field"><label for="pn-func">Funcionária</label><select id="pn-func" data-pnl="func"><option value="">Todas</option>${empList().map(e=>`<option value="${e.id}" ${pnl.func===e.id?"selected":""}>${esc(e.nome||"")}</option>`).join("")}</select></div>
       <div class="field" style="justify-content:flex-end"><button type="button" data-act="pnlAtualizar">Atualizar</button></div></div>`;
-  if(!D)return h+`<div class="muted">Carregando painel…</div>`;
-  if(D.erro)return h+`<div class="banner warn">${esc(D.erro)}</div>`;
+  if(!D)return filtros+`<div class="muted">Carregando painel…</div>`;
+  if(D.erro)return filtros+`<div class="banner warn">${esc(D.erro)}</div>`;
+  let h="";
   const nome=id=>{const e=S.emps[id];return e&&e.nome?e.nome:"Funcionária removida"};
   const dias=D.dias.slice(-(+pnl.periodo));const noPer=new Set(dias);
   const oc=D.oc.filter(o=>(!pnl.func||o.t.func_id===pnl.func));
@@ -1398,6 +1459,19 @@ function viewPainel(){
   const atrasadas=Object.values(grp).map(g=>({...g,valeHoje:aplicaNoDia(g.t,D.hoje)}));
   const revisar=oc.filter(o=>o.feita&&o.f&&!o.f.revisao);
   const comAtraso=feitas.filter(o=>o.atrasoFeito).length;
+  // Ponto agora: situação de cada funcionária hoje
+  const empsP=empList().filter(e=>(!pnl.func||e.id===pnl.func)&&ativaNoMes(e,new Date().getFullYear(),new Date().getMonth()));
+  if(empsP.length){
+    h+=`<section class="card ponto-agora"><div class="conta-linha"><h2>Ponto agora</h2><span class="muted small">${new Date().toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"2-digit"})}</span></div>
+      <div class="pa-lista">${empsP.map(e=>{const L=(D.pontoHoje||[]).filter(r=>r.func_id===e.id&&!r.desconsiderado).sort((a,b)=>new Date(a.momento)-new Date(b.momento));
+        const ult=L[L.length-1];const mt=minutosTrabalhados(L);
+        if(mt.aberto&&ult)mt.min+=Math.max(0,(Date.now()-new Date(ult.momento))/60000);
+        const [cls,txt]=!ult?["fora","Sem entrada hoje"]:ult.tipo==="saida"?["saiu",`Saiu às ${hhmm(ult.momento)}`]:ult.tipo==="saida_almoco"?["almoco",`No almoço desde ${hhmm(ult.momento)}`]:["trab",`Trabalhando desde ${hhmm(ult.momento)}`];
+        return `<button type="button" class="pa-item" data-act="paVer" data-id="${e.id}"><span class="pa-pt ${cls}" aria-hidden="true"></span><span class="pa-txt"><b>${esc(e.nome||"")}</b><span class="small ${cls==="fora"?"muted":""}">${txt}</span>
+          ${L.length?`<span class="small muted num">${L.map(r=>hhmm(r.momento)).join(" · ")}</span>`:""}</span><span class="pa-h num">${fmtHoras(mt.min)}${mt.aberto?"<span class='pa-agora'>até agora</span>":""}</span></button>`}).join("")}</div>
+      <div class="muted small">Horas trabalhadas hoje. Toque numa funcionária para ver o ponto do mês.</div></section>`;
+  }
+  h+=filtros;
   h+=`<div class="pnl-kpis">
     <div class="tile"><span class="label">Concluídas no período</span><span class="v num">${pct}%</span><span class="muted small">${feitas.length} de ${per.length} tarefas${comAtraso?` · ${comAtraso} com atraso`:""}</span></div>
     <div class="tile"><span class="label">Hoje</span><span class="v num">${hojeFeitas}/${hoje.length}</span><span class="muted small">${hoje.length-hojeFeitas} pendente(s)</span></div>
@@ -1465,7 +1539,7 @@ function render(){
   document.getElementById("mlabel").textContent=(window.innerWidth<=640?MESES[ym.m].slice(0,3):MESES[ym.m])+" "+ym.y;
   if((tab==="assin"||tab==="rotina")&&!nuvem&&mode!=="loading"&&mode!=="login"&&mode!=="func")tab="mes";
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab?"true":"false"));
-  atualizarAbaAssinaturas();atualizarAbaRotina();atualizarContaTopo();
+  atualizarAbaAssinaturas();atualizarAbaRotina();atualizarContaTopo();atualizarMobNav();
   document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos"||tab==="assin"||tab==="rotina");
   const v=document.getElementById("view");
   document.body.classList.toggle("tela-login",mode==="login"||mode==="func");
@@ -2190,6 +2264,7 @@ view.addEventListener("click",async ev=>{
   else if(a==="desfazerTarefa"){if(!await confirmar("Desfazer a conclusão?","<p>A tarefa volta para a lista de pendentes. Para concluir de novo, será preciso informar a hora e enviar outra foto.</p>","Desfazer","Voltar"))return;
     try{await rpcFunc("marcar_tarefa",{p_tarefa:b.dataset.id,p_feita:false});carregarAbaFunc("tarefas")}catch(e){tratarErroFunc(e)}}
   else if(a==="verFoto"){verFoto(b.dataset.url)}
+  else if(a==="paVer"){rot.func=b.dataset.id;rot.sub="ponto";rot.ponto=null;render();carregarRotina();window.scrollTo(0,0)}
   else if(a==="pnlAtualizar"){pnl.dados=null;render();carregarPainel()}
   else if(a==="pnlAprovar"){b.disabled=true;const {error}=await sb.rpc("revisar_tarefa",{p_casa:nuvem.casa.id,p_tarefa:b.dataset.t,p_data:b.dataset.d,p_status:"ok",p_obs:null});if(error){toast(error.message);b.disabled=false;return}toast("Tarefa aprovada");carregarPainel()}
   else if(a==="pnlRefazer"){pnl.refazerId=b.dataset.id;render();const el=document.getElementById("rf-obs");if(el)el.focus()}
