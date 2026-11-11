@@ -43,6 +43,14 @@ Você cadastra as regras uma vez e o app calcula tudo sozinho a cada mês.
    - Opcional: `ZAPSIGN_SANDBOX=1` para testar no ambiente de testes da ZapSign (com token de sandbox).
 3. Faça um novo deploy para as variáveis valerem.
 
+## Rotina: tarefas, ponto e recados
+
+Requer o script `supabase/rotina.sql` (rode no SQL Editor depois do `funcionarias.sql`).
+
+- **Tarefas**: na aba **Rotina → Tarefas**, o empregador cria tarefas para um dia específico, para todos os dias de trabalho da funcionária ou para dias da semana escolhidos. Ela vê as tarefas de hoje na aba **Tarefas** da área dela e marca as concluídas; o empregador vê o que foi feito e a que horas.
+- **Ponto**: na área dela, a aba **Ponto** mostra um relógio e o botão do próximo registro (entrada, saída para o almoço, volta do almoço, saída). O horário é o do servidor; o IP e, se o celular permitir, o local também são gravados. Ela não altera nem apaga registros. Em **Rotina → Ponto**, o empregador vê os registros do mês, as horas de cada dia e o total, pode incluir ajustes (com motivo) e desconsiderar registros (com motivo, sem apagar). Atende ao registro de horário exigido pela LC 150/2015, art. 12.
+- **Recados**: ela envia recados (recado, atraso ou falta, falta algo em casa, outro) e vê as respostas. Em **Rotina → Recados**, o empregador lê e responde; a aba mostra quantos recados novos chegaram.
+
 ## Recibos de vários meses
 
 Na aba **Recibos**, escolha o período (de/até, até 36 meses) e as funcionárias. A prévia mostra cada mês com o total recebido e se a folha está salva. **Gerar PDF** cria um único arquivo com uma página de resumo (opcional), os recibos de cada mês em uma ou duas vias e os recibos de adiantamento (opcional). Meses com a folha salva usam os valores congelados; os demais usam os cadastros e regras atuais.

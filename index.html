@@ -132,6 +132,35 @@ nav.tabs .ts{display:none}
   .gest-tile{flex:0 0 auto;flex-direction:row;align-items:baseline;gap:6px;padding:8px 12px;border-radius:99px;min-height:0}
   .gest-tile .v{font-size:1rem}
   .gest-cab{flex-direction:column}.gest-acoes{width:100%}.gest-acoes .primary-link{flex:1;text-align:center}}
+.func-abas{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:3px;background:var(--sunken);border-radius:12px;padding:3px}
+.func-abas button{border:none;background:transparent;border-radius:9px;padding:9px 6px;font-weight:500;color:var(--muted)}
+.func-abas button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.tarefas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.tarefa{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:1rem}
+.tarefa input{width:22px;height:22px;flex-shrink:0;margin-top:1px}
+.tarefa.feita{background:var(--good-soft);border-color:transparent}.tarefa.feita>span{text-decoration:line-through;text-decoration-color:var(--muted)}
+.tarefas.adm li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.tarefas.adm li>span:first-child{flex:1 1 220px;min-width:0}
+.ok-txt{color:var(--good)}
+.form-tarefa{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;align-items:end;margin-top:6px}
+.ponto-card{align-items:center;text-align:center}
+.relogio .hora{font-size:2.6rem;font-weight:600;letter-spacing:.02em}
+.bater{font-size:1.15rem;padding:16px 28px;border-radius:14px;width:100%;max-width:360px}
+.outro-tipo{width:100%;max-width:360px}.outro-tipo .days{justify-content:center;margin-top:8px}
+.ponto-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ponto-lista li{padding:6px 0;border-bottom:1px dashed var(--line)}
+.riscado{text-decoration:line-through;opacity:.6}
+.ponto-adm td{vertical-align:top}
+.reg{display:inline-flex;align-items:center;gap:4px;margin:2px 10px 2px 0;white-space:nowrap}
+.small-btn{padding:0 6px!important;min-height:0!important;font-size:.9rem}
+.desc-form{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+.chat{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;padding:4px}
+.msg{max-width:85%;padding:8px 12px;border-radius:14px;background:var(--sunken);align-self:flex-start;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.msg.eu{align-self:flex-end;background:var(--accent-soft)}
+.msg .quando{font-size:.72rem;color:var(--muted)}
+.msg .cat{font-size:.72rem;font-weight:600;color:var(--warn);text-transform:uppercase;letter-spacing:.05em}
+.form-recado{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+@media (max-width:640px){nav.tabs button{font-size:.74rem}}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -269,6 +298,7 @@ textarea.recibo{font-family:var(--f-mono);font-size:.8rem;height:200px}
     <button role="tab" data-tab="func" aria-selected="false">Cadastros</button>
     <button role="tab" data-tab="recibos" aria-selected="false">Recibos</button>
     <button role="tab" data-tab="assin" aria-selected="false" hidden><span class="tl">Assinaturas</span><span class="ts">Assinar</span><span class="badge" hidden>0</span></button>
+    <button role="tab" data-tab="rotina" aria-selected="false" hidden>Rotina<span class="badge" hidden>0</span></button>
     <button role="tab" data-tab="regras" aria-selected="false"><span class="tl">Regras gerais</span><span class="ts">Regras</span></button>
   </nav>
 
@@ -584,7 +614,7 @@ async function iniciarNuvem(){
     if(ev==="SIGNED_IN"&&sess&&mode==="login"&&loginModo!=="nova")setTimeout(()=>abrirCasa(sess),0);
     if(ev==="SIGNED_OUT"&&mode!=="func"){mode="login";loginModo="entrar";render()}
   });
-  if(funcSessao){mode="func";funcDados=null;render();carregarFunc(true);
+  if(funcSessao){mode="func";funcDados=null;render();carregarFunc(true);atualizarNovosFunc();
     if(/[?&]assinado=1/.test(location.search))history.replaceState(null,"",location.pathname);return}
   if(/[?&]visto=1/.test(location.search)){history.replaceState(null,"",location.pathname);ultimaSync=0;setTimeout(()=>sincronizarAssinaturas(true),2500)}
   const {data}=await sb.auth.getSession();
@@ -605,7 +635,7 @@ async function abrirCasa_(sess){
     try{await db.pronto}catch(e){document.getElementById("status").innerHTML=`<div class="banner warn">Sem conexão com a nuvem agora. Mostrando os últimos dados salvos neste aparelho; alterações não serão gravadas até a internet voltar.</div>`}
     db.doc("config/geral").onSnapshot(s=>{S.cfg=s.exists?s.data():null;S.cfgLoaded=true;softRender()});
     db.collection("funcionarias").onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.emps=o;S.empsLoaded=true;softRender()});
-    subscribeMes();carregarMembros();oferecerMigracao();carregarAcessos();carregarPublicados().then(()=>sincronizarAssinaturas(true));
+    subscribeMes();carregarMembros();oferecerMigracao();carregarAcessos();carregarPublicados().then(()=>sincronizarAssinaturas(true));carregarNaoLidos();
   }catch(e){mode="login";render();const m=document.getElementById("lg-msg");if(m)m.textContent="Não foi possível abrir seus dados: "+((e&&e.message)||"erro")+". Confira se o banco de dados foi configurado."}
 }
 async function carregarMembros(){if(!sb||!nuvem)return;const {data}=await sb.from("casa_membros").select("email,adicionado_em").eq("casa_id",nuvem.casa.id).order("adicionado_em");membros=data||[];if(tab==="func"&&!appHasFocus())render()}
@@ -811,7 +841,7 @@ async function entrarFunc(){
   btn.disabled=false;
   if(error||!data||data.erro){msg.textContent=error?msgAuth(error):data.erro;msg.classList.add("erro");return}
   funcSessao=data.token;try{localStorage.setItem(SESS_FUNC,funcSessao)}catch(e){}
-  funcDados={nome:data.nome,recibos:undefined};mode="func";render();carregarFunc(true);
+  funcDados={nome:data.nome,recibos:undefined};funcTab="recibos";mode="func";render();carregarFunc(true);atualizarNovosFunc();
 }
 async function carregarFunc(sync){
   if(!funcSessao)return;funcCarregando=true;
@@ -835,6 +865,10 @@ function sairFunc(msg){if(funcSessao&&sb)sb.rpc("sair_funcionaria",{p_token:func
 function viewFuncionaria(){
   const d=funcDados||{};const lista=d.recibos;
   let h=`<div class="func-wrap"><section class="card"><div class="conta-linha"><div><div class="muted small">Olá,</div><h2>${esc(d.nome||"")}</h2></div><button type="button" data-act="sairFunc">Sair</button></div></section>`;
+  h+=abasFunc();
+  if(funcTab==="tarefas")return h+viewFuncTarefas()+`</div>`;
+  if(funcTab==="ponto")return h+viewFuncPonto()+`</div>`;
+  if(funcTab==="recados")return h+viewFuncRecados()+`</div>`;
   if(lista===undefined)return h+`<section class="card"><div class="muted">Carregando seus recibos…</div></section></div>`;
   if(!lista.length)return h+`<section class="card empty-func"><h2>Nenhum recibo disponível</h2><div class="muted">Quando seu empregador salvar a folha do mês, o recibo aparece aqui para você conferir e assinar. Recibos assinados ficam disponíveis por 15 dias.</div></section></div>`;
   const ehDoc=r=>r.dados&&r.dados.tipo==="documento";
@@ -995,6 +1029,204 @@ function atualizarAbaAssinaturas(){
   const badge=b.querySelector(".badge");if(badge){badge.textContent=q;badge.hidden=!q}
 }
 
+/* ---------- Rotina: tarefas, ponto e recados ---------- */
+const TIPOS_PONTO=[["entrada","Entrada"],["saida_almoco","Saída para o almoço"],["volta_almoco","Volta do almoço"],["saida","Saída"]];
+const NOME_PONTO=Object.fromEntries(TIPOS_PONTO);
+const CAT_RECADO=[["recado","Recado"],["atraso","Atraso ou falta"],["compras","Falta algo em casa"],["outro","Outro"]];
+const NOME_CAT=Object.fromEntries(CAT_RECADO);
+const hhmm=d=>new Date(d).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+const diaLocal=d=>{const x=new Date(d);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`};
+const fmtHoras=min=>`${Math.floor(min/60)}h${String(Math.round(min%60)).padStart(2,"0")}`;
+/* Minutos trabalhados: soma cada início (entrada/volta) até o fim seguinte (saída almoço/saída). Registros desconsiderados não contam. */
+function minutosTrabalhados(regs){
+  let ini=null,tot=0;
+  regs.filter(r=>!r.desconsiderado).sort((a,b)=>new Date(a.momento)-new Date(b.momento)).forEach(r=>{
+    if(r.tipo==="entrada"||r.tipo==="volta_almoco")ini=new Date(r.momento);
+    else if(ini){tot+=(new Date(r.momento)-ini)/60000;ini=null}
+  });
+  return {min:tot,aberto:!!ini};
+}
+function proximoTipo(regsHoje){const n=regsHoje.filter(r=>!r.desconsiderado).length;return TIPOS_PONTO[n%4][0]}
+
+/* ===== Área da funcionária ===== */
+let funcTab="recibos",funcTarefas=null,funcPonto=null,funcRecados=null,funcNovos=0,relogioTimer=null;
+async function rpcFunc(fn,args={}){
+  const {data,error}=await sb.rpc(fn,{p_token:funcSessao,...args});
+  if(error){
+    if(/sessao/.test(error.message||""))throw Object.assign(new Error("sessao"),{sessao:true});
+    if(/PGRST202|Could not find the function/.test((error.code||"")+(error.message||"")))throw new Error("Esta área ainda não foi ativada pelo empregador.");
+    throw new Error(error.message||"Erro");
+  }
+  return data;
+}
+function tratarErroFunc(e){if(e&&e.sessao){sairFunc("Sua sessão terminou. Entre de novo.");return}toast(e.message||"Erro")}
+async function carregarAbaFunc(aba){
+  try{
+    if(aba==="tarefas")funcTarefas=await rpcFunc("minhas_tarefas");
+    if(aba==="ponto")funcPonto=await rpcFunc("meu_ponto");
+    if(aba==="recados"){funcRecados=await rpcFunc("meus_recados");funcNovos=0}
+  }catch(e){if(aba==="tarefas")funcTarefas={erro:e.message};if(aba==="ponto")funcPonto={erro:e.message};if(aba==="recados")funcRecados={erro:e.message};tratarErroFunc(e)}
+  if(mode==="func")render();
+}
+async function atualizarNovosFunc(){try{funcNovos=await rpcFunc("recados_novos_func")||0;if(mode==="func"&&!appHasFocus())render()}catch(e){}}
+function abasFunc(){
+  const pend=(funcDados&&funcDados.recibos||[]).filter(r=>r.status==="pendente").length;
+  const t=[["recibos","Recibos",pend],["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",funcNovos]];
+  return `<div class="func-abas" role="tablist">${t.map(([k,l,b])=>`<button type="button" role="tab" data-act="funcTab" data-t="${k}" aria-selected="${funcTab===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
+}
+function viewFuncTarefas(){
+  const d=funcTarefas;if(!d)return `<section class="card"><div class="muted">Carregando tarefas…</div></section>`;
+  if(d.erro)return `<section class="card"><div class="muted">${esc(d.erro)}</div></section>`;
+  const L=d.tarefas||[];const feitas=L.filter(t=>t.feita_em).length;
+  const dt=new Date(d.data+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
+  if(!L.length)return `<section class="card"><h2>Tarefas de hoje</h2><div class="muted small">${esc(dt)}</div><div class="muted">Nenhuma tarefa para hoje.</div></section>`;
+  return `<section class="card"><div class="conta-linha"><div><h2>Tarefas de hoje</h2><div class="muted small">${esc(dt)}</div></div><span class="chip ${feitas===L.length?"ok-chip":"informal"}">${feitas} de ${L.length} feitas</span></div>
+    <ul class="tarefas">${L.map(t=>`<li><label class="tarefa ${t.feita_em?"feita":""}"><input type="checkbox" data-tarefa="${t.id}" ${t.feita_em?"checked":""}><span>${esc(t.texto)}${t.feita_em?`<span class="muted small"> · feita às ${hhmm(t.feita_em)}</span>`:""}</span></label></li>`).join("")}</ul></section>`;
+}
+function viewFuncPonto(){
+  const d=funcPonto;if(!d)return `<section class="card"><div class="muted">Carregando ponto…</div></section>`;
+  if(d.erro)return `<section class="card"><div class="muted">${esc(d.erro)}</div></section>`;
+  const regs=d.registros||[];const hoje=diaLocal(new Date());
+  const rh=regs.filter(r=>diaLocal(r.momento)===hoje);const prox=proximoTipo(rh);const mt=minutosTrabalhados(rh);
+  const porDia={};regs.forEach(r=>{(porDia[diaLocal(r.momento)]=porDia[diaLocal(r.momento)]||[]).push(r)});
+  const dias=Object.keys(porDia).filter(k=>k!==hoje).sort().reverse().slice(0,14);
+  return `<section class="card ponto-card">
+      <div class="relogio"><div class="muted small">${new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}</div><div class="hora num" id="relogio">${new Date().toLocaleTimeString("pt-BR")}</div></div>
+      <button type="button" class="primary bater" data-act="baterPonto" data-tipo="${prox}">Registrar ${NOME_PONTO[prox].toLowerCase()}</button>
+      <details class="outro-tipo"><summary>Registrar outro tipo</summary><div class="days">${TIPOS_PONTO.filter(t=>t[0]!==prox).map(([k,l])=>`<button type="button" data-act="baterPonto" data-tipo="${k}">${l}</button>`).join("")}</div></details>
+      <div class="muted small">O horário registrado é o do servidor. Se o celular permitir, o local também é registrado.</div>
+    </section>
+    <section class="card"><div class="conta-linha"><h2>Hoje</h2><span class="chip">${fmtHoras(mt.min)}${mt.aberto?" + em andamento":""}</span></div>
+      ${rh.length?`<ul class="ponto-lista">${rh.map(r=>`<li class="${r.desconsiderado?"riscado":""}"><b class="num">${hhmm(r.momento)}</b> ${NOME_PONTO[r.tipo]}${r.origem==="ajuste"?` <span class="chip informal">ajuste do empregador</span>`:""}${r.desconsiderado?` <span class="chip">desconsiderado</span>`:""}</li>`).join("")}</ul>`:`<div class="muted">Nenhum registro hoje.</div>`}
+    </section>
+    ${dias.length?`<section class="card"><h2>Dias anteriores</h2><div class="table-wrap"><table class="list"><thead><tr><th>Dia</th><th>Registros</th><th>Horas</th></tr></thead><tbody>
+      ${dias.map(k=>{const L=porDia[k];return `<tr><td class="num">${k.slice(8)}/${k.slice(5,7)}</td><td>${L.map(r=>`<span class="${r.desconsiderado?"riscado":""}">${hhmm(r.momento)}</span>`).join(" · ")}</td><td class="num">${fmtHoras(minutosTrabalhados(L).min)}</td></tr>`}).join("")}
+    </tbody></table></div></section>`:""}`;
+}
+function viewFuncRecados(){
+  const d=funcRecados;if(!d)return `<section class="card"><div class="muted">Carregando recados…</div></section>`;
+  if(d.erro)return `<section class="card"><div class="muted">${esc(d.erro)}</div></section>`;
+  const L=d.recados||[];
+  return `<section class="card"><h2>Recados para o empregador</h2>
+    <div class="chat">${L.length?L.map(m=>`<div class="msg ${m.de==="func"?"eu":"ele"}">${m.categoria!=="recado"?`<span class="cat">${esc(NOME_CAT[m.categoria]||"")}</span>`:""}<div>${esc(m.texto).replace(/\n/g,"<br>")}</div><span class="quando">${m.de==="emp"?"Empregador · ":""}${new Date(m.criado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${m.de==="func"&&m.lido_em?" · lido":""}</span></div>`).join(""):`<div class="muted small">Nenhum recado ainda. Escreva abaixo: atrasos, faltas, algo que acabou em casa ou qualquer informação.</div>`}</div>
+    <form id="form-recado" class="form-recado">
+      <select id="rc-cat" aria-label="Tipo de recado">${CAT_RECADO.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select>
+      <textarea id="rc-txt" rows="3" maxlength="2000" placeholder="Escreva seu recado"></textarea>
+      <button type="submit" class="primary" id="rc-btn">Enviar recado</button>
+    </form></section>`;
+}
+async function baterPonto(tipo,b){
+  b.disabled=true;const txt=b.textContent;b.textContent="Registrando…";
+  const pos=await new Promise(res=>{if(!navigator.geolocation)return res(null);let ok=false;
+    navigator.geolocation.getCurrentPosition(p=>{ok=true;res(p.coords)},()=>res(null),{enableHighAccuracy:true,timeout:6000,maximumAge:60000});setTimeout(()=>{if(!ok)res(null)},7000)});
+  try{const r=await rpcFunc("bater_ponto",{p_tipo:tipo,p_lat:pos?pos.latitude:null,p_lng:pos?pos.longitude:null});
+    toast(`${NOME_PONTO[r.tipo]} registrada às ${hhmm(r.momento)}`);funcPonto=await rpcFunc("meu_ponto");render()}
+  catch(e){tratarErroFunc(e);b.disabled=false;b.textContent=txt}
+}
+function iniciarRelogio(){clearInterval(relogioTimer);relogioTimer=setInterval(()=>{const el=document.getElementById("relogio");if(el)el.textContent=new Date().toLocaleTimeString("pt-BR");else clearInterval(relogioTimer)},1000)}
+
+/* ===== Lado do empregador: aba Rotina ===== */
+const rot={sub:"tarefas",func:"",data:"",mes:"",tarefas:null,feitas:{},ponto:null,recados:null,naoLidos:{},erro:null,ajuste:false,descId:null,repet:"dia"};
+function totalNaoLidos(){return Object.values(rot.naoLidos).reduce((a,b)=>a+b,0)}
+async function carregarNaoLidos(){
+  if(!sb||!nuvem)return;const {data,error}=await sb.from("recados").select("func_id").eq("casa_id",nuvem.casa.id).eq("de","func").is("lido_em",null).limit(500);
+  if(error)return;rot.naoLidos={};(data||[]).forEach(r=>rot.naoLidos[r.func_id]=(rot.naoLidos[r.func_id]||0)+1);atualizarAbaRotina();if(tab==="rotina"&&!appHasFocus())render();
+}
+function atualizarAbaRotina(){const b=document.querySelector('nav.tabs button[data-tab="rotina"]');if(!b)return;b.hidden=!nuvem;const q=totalNaoLidos();const bd=b.querySelector(".badge");if(bd){bd.textContent=q;bd.hidden=!q}}
+function padroesRotina(){
+  if(!rot.func||!S.emps[rot.func]){const e=empList()[0];rot.func=e?e.id:""}
+  if(!rot.data)rot.data=diaLocal(new Date());
+  if(!rot.mes)rot.mes=rot.data.slice(0,7);
+}
+async function carregarRotina(){
+  if(!nuvem)return;const c=nuvem.casa.id;rot.erro=null;padroesRotina();rot.carregando=true;
+  try{
+    if(rot.sub==="tarefas"&&rot.func){
+      const {data,error}=await sb.from("tarefas").select("*").eq("casa_id",c).eq("func_id",rot.func).eq("ativa",true).order("criado_em");if(error)throw error;
+      const dow=new Date(rot.data+"T12:00:00").getDay();
+      rot.tarefas=(data||[]).filter(t=>t.data===rot.data||(!t.data&&(t.dias||[]).includes(dow)));
+      rot.feitas={};if(rot.tarefas.length){const r=await sb.from("tarefas_feitas").select("tarefa_id,feita_em").in("tarefa_id",rot.tarefas.map(t=>t.id)).eq("data",rot.data);(r.data||[]).forEach(f=>rot.feitas[f.tarefa_id]=f.feita_em)}
+    }
+    if(rot.sub==="ponto"&&rot.func){
+      const [y,m]=rot.mes.split("-").map(Number);const ini=new Date(y,m-1,1),fim=new Date(y,m,1);
+      const {data,error}=await sb.from("registros_ponto").select("*").eq("casa_id",c).eq("func_id",rot.func).gte("momento",ini.toISOString()).lt("momento",fim.toISOString()).order("momento");if(error)throw error;
+      rot.ponto=data||[];
+    }
+    if(rot.sub==="recados"&&rot.func){
+      const {data,error}=await sb.from("recados").select("*").eq("casa_id",c).eq("func_id",rot.func).order("criado_em",{ascending:false}).limit(100);if(error)throw error;
+      rot.recados=(data||[]).reverse();
+      if(rot.naoLidos[rot.func]){await sb.rpc("marcar_recados_lidos",{p_casa:c,p_func:rot.func});rot.naoLidos[rot.func]=0;atualizarAbaRotina()}
+    }
+  }catch(e){rot.erro=/does not exist|Could not find|PGRST20/.test((e.code||"")+(e.message||""))?"Para usar tarefas, ponto e recados, rode o script supabase/rotina.sql no Supabase.":(e.message||"Erro ao carregar")}
+  rot.carregando=false;if(tab==="rotina")render();
+}
+function viewRotina(){
+  if(!nuvem)return `<div class="empty"><div class="muted">Disponível quando os dados estão na nuvem.</div></div>`;
+  const emps=empList();if(!emps.length)return `<div class="empty"><div class="muted">Cadastre uma funcionária primeiro.</div></div>`;
+  padroesRotina();
+  const pend=rot.sub==="tarefas"?rot.tarefas:rot.sub==="ponto"?rot.ponto:rot.recados;
+  if(pend===null&&!rot.carregando&&!rot.erro)setTimeout(carregarRotina,0);
+  const subs=[["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",totalNaoLidos()]];
+  let h=`<div style="display:flex;flex-direction:column;gap:14px">
+    <div class="conta-linha"><h2>Rotina</h2>
+      <div class="field" style="min-width:200px"><label for="rt-func">Funcionária</label><select id="rt-func" data-rot="func">${emps.map(e=>`<option value="${e.id}" ${rot.func===e.id?"selected":""}>${esc(e.nome||"Sem nome")}${rot.naoLidos[e.id]?` (${rot.naoLidos[e.id]} recado${rot.naoLidos[e.id]>1?"s":""} novo${rot.naoLidos[e.id]>1?"s":""})`:""}</option>`).join("")}</select></div></div>
+    <div class="func-abas" role="tablist">${subs.map(([k,l,b])=>`<button type="button" role="tab" data-act="rotSub" data-s="${k}" aria-selected="${rot.sub===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
+  if(rot.erro)return h+`<div class="banner warn">${esc(rot.erro)}</div></div>`;
+  const e=S.emps[rot.func]||{};
+  if(rot.sub==="tarefas"){
+    const L=rot.tarefas;const dowNome=["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+    h+=`<section class="card"><div class="conta-linha"><h2>Tarefas</h2><div class="field"><label for="rt-data">Dia</label><input type="date" id="rt-data" data-rot="data" value="${rot.data}"></div></div>
+      ${L===null?'<div class="muted">Carregando…</div>':!L.length?'<div class="muted">Nenhuma tarefa neste dia.</div>':`<ul class="tarefas adm">${L.map(t=>`<li><span class="${rot.feitas[t.id]?"ok-txt":""}">${rot.feitas[t.id]?"✓ ":"○ "}${esc(t.texto)}</span>
+        <span class="muted small">${t.dias?"repete: "+t.dias.map(d=>dowNome[d].slice(0,3)).join(", "):"só neste dia"}${rot.feitas[t.id]?` · feita às ${hhmm(rot.feitas[t.id])}`:""}</span>
+        <button type="button" class="ghost danger" data-act="rmTarefa" data-id="${t.id}" data-rep="${t.dias?1:0}">${t.dias?"Parar de repetir":"Remover"}</button></li>`).join("")}</ul>`}
+      <form id="form-tarefa" class="form-tarefa">
+        <input type="text" id="tf-txt" maxlength="300" placeholder="Nova tarefa, ex.: Trocar a roupa de cama" aria-label="Nova tarefa">
+        <select id="tf-rep" data-rot="repet" aria-label="Repetição"><option value="dia" ${rot.repet==="dia"?"selected":""}>Só em ${new Date(rot.data+"T12:00:00").toLocaleDateString("pt-BR")}</option><option value="escala" ${rot.repet==="escala"?"selected":""}>Todos os dias de trabalho dela</option><option value="dias" ${rot.repet==="dias"?"selected":""}>Escolher os dias da semana</option></select>
+        ${rot.repet==="dias"?`<div class="days" style="grid-column:1/-1">${DIAS.map((d,i)=>`<label><input type="checkbox" data-tf-dia="${i}" ${(e.dias||[]).includes(i)?"checked":""}>${d}</label>`).join("")}</div>`:""}
+        <button type="submit" class="primary">Adicionar tarefa</button>
+      </form></section>`;
+  }
+  if(rot.sub==="ponto"){
+    const regs=rot.ponto;
+    h+=`<section class="card"><div class="conta-linha"><h2>Ponto</h2><div class="field"><label for="rt-mes">Mês</label><input type="month" id="rt-mes" data-rot="mes" value="${rot.mes}"></div></div>`;
+    if(regs===null)h+='<div class="muted">Carregando…</div>';
+    else{
+      const porDia={};regs.forEach(r=>{(porDia[diaLocal(r.momento)]=porDia[diaLocal(r.momento)]||[]).push(r)});
+      const dias=Object.keys(porDia).sort();const total=dias.reduce((a,k)=>a+minutosTrabalhados(porDia[k]).min,0);
+      h+=`<div class="gest-resumo"><div class="gest-tile"><span class="v num">${dias.length}</span><span class="small">dias com registro</span></div><div class="gest-tile"><span class="v num">${fmtHoras(total)}</span><span class="small">horas no mês</span></div></div>`;
+      h+=!dias.length?'<div class="muted">Nenhum registro neste mês.</div>':`<div class="table-wrap"><table class="list ponto-adm"><thead><tr><th>Dia</th><th>Registros</th><th>Horas</th></tr></thead><tbody>
+        ${dias.map(k=>{const L=porDia[k];const mt=minutosTrabalhados(L);const dt=new Date(k+"T12:00:00");return `<tr><td class="num">${k.slice(8)}/${k.slice(5,7)} <span class="muted small">${DIAS[dt.getDay()]}</span></td><td>${L.map(r=>`<span class="reg ${r.desconsiderado?"riscado":""}" title="${esc([r.origem==="ajuste"?"Ajuste: "+(r.motivo||""):"",r.desconsiderado?"Desconsiderado: "+(r.desconsiderado_motivo||""):"",r.ip?"IP "+r.ip:""].filter(Boolean).join(" · "))}"><b class="num">${hhmm(r.momento)}</b> ${NOME_PONTO[r.tipo]}${r.origem==="ajuste"?' <span class="chip informal">ajuste</span>':""}${r.lat!=null?` <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" class="small">local</a>`:""}${!r.desconsiderado?` <button type="button" class="ghost small-btn" data-act="descPonto" data-id="${r.id}" aria-label="Desconsiderar registro">×</button>`:""}</span>
+          ${rot.descId===r.id?`<span class="desc-form"><input type="text" id="desc-mot" placeholder="Motivo" maxlength="200"><button type="button" class="danger" data-act="descConfirma" data-id="${r.id}">Desconsiderar</button><button type="button" data-act="descCancela">Cancelar</button></span>`:""}`).join("")}</td><td class="num">${fmtHoras(mt.min)}${mt.aberto?"*":""}</td></tr>`}).join("")}
+      </tbody><tfoot><tr><th colspan="2">Total do mês</th><th class="num">${fmtHoras(total)}</th></tr></tfoot></table></div>
+      <div class="muted small">* dia com registro de entrada sem a saída correspondente. Registros desconsiderados aparecem riscados e não contam. Nada é apagado.</div>`;
+      h+=rot.ajuste?`<form id="form-ajuste" class="form-tarefa"><div class="field"><label for="aj-data">Dia</label><input type="date" id="aj-data" value="${rot.mes}-${String(Math.min(new Date().getDate(),28)).padStart(2,"0")}"></div>
+          <div class="field"><label for="aj-hora">Hora</label><input type="time" id="aj-hora" value="08:00"></div>
+          <div class="field"><label for="aj-tipo">Tipo</label><select id="aj-tipo">${TIPOS_PONTO.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select></div>
+          <div class="field" style="grid-column:1/-1"><label for="aj-mot">Motivo do ajuste</label><input type="text" id="aj-mot" maxlength="200" placeholder="Ex.: esqueceu de registrar a saída"></div>
+          <div><button type="submit" class="primary">Incluir ajuste</button> <button type="button" data-act="ajusteCancela">Cancelar</button></div></form>`
+        :`<div><button type="button" data-act="ajusteAbre">Incluir ajuste de ponto</button></div>`;
+    }
+    h+=`</section>`;
+  }
+  if(rot.sub==="recados"){
+    const L=rot.recados;
+    h+=`<section class="card"><h2>Recados de ${esc(e.nome||"")}</h2>
+      <div class="chat">${L===null?'<div class="muted">Carregando…</div>':!L.length?'<div class="muted small">Nenhum recado ainda.</div>':L.map(m=>`<div class="msg ${m.de==="emp"?"eu":"ele"}">${m.categoria!=="recado"?`<span class="cat">${esc(NOME_CAT[m.categoria]||"")}</span>`:""}<div>${esc(m.texto).replace(/\n/g,"<br>")}</div><span class="quando">${m.de==="func"?esc(e.nome||"Ela")+" · ":"Você · "}${new Date(m.criado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${m.de==="emp"&&m.lido_em?" · lido":""}</span></div>`).join("")}</div>
+      <form id="form-resposta" class="form-recado"><textarea id="rs-txt" rows="2" maxlength="2000" placeholder="Responder ou deixar uma informação para ela"></textarea><button type="submit" class="primary">Enviar</button></form></section>`;
+  }
+  return h+`</div>`;
+}
+async function enviarTarefa(){
+  const txt=document.getElementById("tf-txt").value.trim();if(!txt){document.getElementById("tf-txt").focus();return}
+  padroesRotina();if(!/^\d{4}-\d{2}-\d{2}$/.test(rot.data)){toast("Escolha o dia da tarefa.");return}
+  const e=S.emps[rot.func]||{};let row={casa_id:nuvem.casa.id,func_id:rot.func,texto:txt};
+  if(rot.repet==="dia")row.data=rot.data;
+  else if(rot.repet==="escala"){if(!(e.dias||[]).length){toast("Defina os dias de trabalho dela em Cadastros.");return}row.dias=e.dias}
+  else{const d=[...document.querySelectorAll("[data-tf-dia]:checked")].map(x=>+x.dataset.tfDia);if(!d.length){toast("Escolha pelo menos um dia da semana.");return}row.dias=d}
+  const {error}=await sb.from("tarefas").insert(row);if(error){toast("Não foi possível salvar: "+error.message);return}
+  toast("Tarefa adicionada");carregarRotina();
+}
+
 async function start(){
   render();
   const timeout=setTimeout(()=>{if(mode==="loading"){useLocal("Não consegui conectar ao armazenamento compartilhado. Os dados estão sendo salvos só neste navegador.")}},10000);
@@ -1019,18 +1251,19 @@ function appHasFocus(){const a=document.activeElement;return a&&document.getElem
 function softRender(){if(appHasFocus()){updateOutputs()}else render()}
 function render(){
   document.getElementById("mlabel").textContent=MESES[ym.m]+" "+ym.y;
-  if(tab==="assin"&&!nuvem&&mode!=="loading"&&mode!=="login"&&mode!=="func")tab="mes";
+  if((tab==="assin"||tab==="rotina")&&!nuvem&&mode!=="loading"&&mode!=="login"&&mode!=="func")tab="mes";
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab?"true":"false"));
-  atualizarAbaAssinaturas();
-  document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos"||tab==="assin");
+  atualizarAbaAssinaturas();atualizarAbaRotina();
+  document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos"||tab==="assin"||tab==="rotina");
   const v=document.getElementById("view");
   document.body.classList.toggle("tela-login",mode==="login"||mode==="func");
-  if(mode==="func"){v.innerHTML=viewFuncionaria();return}
+  if(mode==="func"){v.innerHTML=viewFuncionaria();if(funcTab==="ponto")iniciarRelogio();return}
   if(mode==="login"){v.innerHTML=viewLogin();const f=document.getElementById(loginTipo==="funcionaria"?"lf-cpf":loginModo==="nova"?"lg-senha":"lg-email");if(f&&!loginEmail)f.focus();return}
   if(mode==="loading"||!S.empsLoaded){v.innerHTML=`<div class="empty"><div class="muted">Carregando suas regras…</div></div>`;return}
   if(tab==="mes"){v.innerHTML=viewMes();if(nuvem)sincronizarAssinaturas()}
   else if(tab==="func")v.innerHTML=viewFunc();
   else if(tab==="assin"){v.innerHTML=viewAssinaturas()}
+  else if(tab==="rotina"){v.innerHTML=viewRotina()}
   else if(tab==="recibos"){v.innerHTML=viewRecibos();if(!lote.prev&&!lote.carregando)atualizarPrevLote()}
   else v.innerHTML=viewRegras();
   if(tab==="mes"&&folhaSalva())v.querySelectorAll("section.emp .adj input, section.emp .adj select, section.emp .adj button:not(.keep)").forEach(x=>x.disabled=true);
@@ -1634,12 +1867,26 @@ function viewRegras(){
 
 /* ---------- Eventos ---------- */
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200)}
-document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
+document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});if(tab==="rotina"){rot.tarefas=rot.ponto=rot.recados=null;carregarRotina()}try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
 document.getElementById("prev").onclick=()=>{ym.m--;if(ym.m<0){ym.m=11;ym.y--}subscribeMes()};
 document.getElementById("next").onclick=()=>{ym.m++;if(ym.m>11){ym.m=0;ym.y++}subscribeMes()};
 
 const view=document.getElementById("view");
-view.addEventListener("submit",ev=>{if(ev.target.id==="login-form"){ev.preventDefault();enviarLogin()}if(ev.target.id==="login-func"){ev.preventDefault();entrarFunc()}});
+view.addEventListener("submit",async ev=>{const f=ev.target;
+  if(f.id==="login-form"){ev.preventDefault();enviarLogin()}
+  if(f.id==="login-func"){ev.preventDefault();entrarFunc()}
+  if(f.id==="form-recado"){ev.preventDefault();const txt=document.getElementById("rc-txt").value.trim();if(!txt){document.getElementById("rc-txt").focus();return}
+    const btn=document.getElementById("rc-btn");btn.disabled=true;btn.textContent="Enviando…";
+    try{await rpcFunc("enviar_recado",{p_texto:txt,p_categoria:document.getElementById("rc-cat").value});toast("Recado enviado");await carregarAbaFunc("recados")}
+    catch(e){tratarErroFunc(e);btn.disabled=false;btn.textContent="Enviar recado"}}
+  if(f.id==="form-tarefa"){ev.preventDefault();enviarTarefa()}
+  if(f.id==="form-resposta"){ev.preventDefault();const txt=document.getElementById("rs-txt").value.trim();if(!txt)return;
+    const {error}=await sb.from("recados").insert({casa_id:nuvem.casa.id,func_id:rot.func,de:"emp",texto:txt});if(error){toast("Não foi possível enviar: "+error.message);return}toast("Mensagem enviada");carregarRotina()}
+  if(f.id==="form-ajuste"){ev.preventDefault();const d=document.getElementById("aj-data").value,hr=document.getElementById("aj-hora").value,tp=document.getElementById("aj-tipo").value,mot=document.getElementById("aj-mot").value.trim();
+    if(!d||!hr){toast("Informe o dia e a hora.");return}if(mot.length<3){toast("Informe o motivo do ajuste.");return}
+    const {error}=await sb.rpc("ajustar_ponto",{p_casa:nuvem.casa.id,p_func:rot.func,p_momento:new Date(d+"T"+hr+":00").toISOString(),p_tipo:tp,p_motivo:mot});
+    if(error){toast(error.message);return}rot.ajuste=false;rot.mes=d.slice(0,7);toast("Ajuste incluído");carregarRotina()}
+});
 document.getElementById("status").addEventListener("click",async ev=>{const b=ev.target.closest("[data-act=migrar]");if(!b)return;b.disabled=true;b.textContent="Enviando…";
   try{await importarParaNuvem(lsLoad());document.getElementById("status").innerHTML="";toast("Dados enviados para a nuvem");render()}catch(e){b.disabled=false;b.textContent="Tentar de novo";toast("Não foi possível enviar: "+((e&&e.message)||"erro"))}});
 view.addEventListener("input",ev=>{
@@ -1665,6 +1912,9 @@ view.addEventListener("input",ev=>{
 });
 view.addEventListener("change",ev=>{
   {const t=ev.target;
+   if(t.dataset.tarefa){const id=t.dataset.tarefa,feita=t.checked;t.disabled=true;
+     rpcFunc("marcar_tarefa",{p_tarefa:id,p_feita:feita}).then(()=>carregarAbaFunc("tarefas")).catch(e=>{t.checked=!feita;t.disabled=false;tratarErroFunc(e)});return}
+   if(t.dataset.rot){const k=t.dataset.rot;rot[k]=t.value;if(k!=="repet"){rot.tarefas=rot.ponto=rot.recados=null;render();carregarRotina()}else render();return}
    if(t.dataset.gest){gest[t.dataset.gest]=t.value;render();return}
    if(t.dataset.docFile){lerPDF(t.dataset.docFile,t.files[0]);return}
    if(t.dataset.docTipo){const id=t.dataset.docTipo;const tp=TIPOS_DOC.find(x=>x[0]===t.value);docForm[id]={tipo:t.value,titulo:tp?tp[1]:"Documento"};render();return}}
@@ -1696,6 +1946,17 @@ view.addEventListener("click",async ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="gerarLote"){gerarLote(b)}
+  else if(a==="funcTab"){funcTab=b.dataset.t;render();if(funcTab!=="recibos")carregarAbaFunc(funcTab);else carregarFunc(false)}
+  else if(a==="baterPonto"){baterPonto(b.dataset.tipo,b)}
+  else if(a==="rotSub"){rot.sub=b.dataset.s;rot.tarefas=rot.ponto=rot.recados=null;rot.ajuste=false;rot.descId=null;render();carregarRotina()}
+  else if(a==="rmTarefa"){const rep=b.dataset.rep==="1";const ok=await confirmar(rep?"Parar de repetir esta tarefa?":"Remover esta tarefa?",rep?"<p>Ela deixa de aparecer nos próximos dias. O histórico de quando foi feita continua guardado.</p>":"<p>A tarefa some da lista deste dia.</p>",rep?"Parar de repetir":"Remover");if(!ok)return;
+    const q=rep?sb.from("tarefas").update({ativa:false}).eq("id",b.dataset.id):sb.from("tarefas").delete().eq("id",b.dataset.id);const {error}=await q;if(error){toast(error.message);return}carregarRotina()}
+  else if(a==="ajusteAbre"){rot.ajuste=true;render()}
+  else if(a==="ajusteCancela"){rot.ajuste=false;render()}
+  else if(a==="descPonto"){rot.descId=b.dataset.id;render();const el=document.getElementById("desc-mot");if(el)el.focus()}
+  else if(a==="descCancela"){rot.descId=null;render()}
+  else if(a==="descConfirma"){const mot=(document.getElementById("desc-mot").value||"").trim();if(mot.length<3){toast("Informe o motivo.");return}
+    const {error}=await sb.rpc("desconsiderar_ponto",{p_casa:nuvem.casa.id,p_id:b.dataset.id,p_motivo:mot});if(error){toast(error.message);return}rot.descId=null;toast("Registro desconsiderado");carregarRotina()}
   else if(a==="gestFiltro"){gest.filtro=b.dataset.f;render()}
   else if(a==="syncGest"){b.disabled=true;b.textContent="Atualizando…";ultimaSync=0;await sincronizarAssinaturas(true);await carregarPublicados();render();toast("Status atualizado")}
   else if(a==="gestValores"){const id=b.dataset.pid;gest.abertos[id]=!gest.abertos[id];render();if(gest.abertos[id]&&gest.valores[id]===undefined)carregarValores(id)}
@@ -1782,6 +2043,8 @@ function c2(x){return JSON.parse(JSON.stringify(x||[]))}
 view.addEventListener("focusout",()=>{setTimeout(()=>{if(!appHasFocus()&&tab==="mes")updateOutputs()},0)});
 
 try{const t=localStorage.getItem("folha-tab");if(t)tab=t}catch(_){}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState!=="visible")return;if(nuvem)carregarNaoLidos();if(mode==="func"){atualizarNovosFunc();if(funcTab!=="recibos")carregarAbaFunc(funcTab)}});
+setInterval(()=>{if(document.visibilityState==="visible"){if(nuvem)carregarNaoLidos();if(mode==="func")atualizarNovosFunc()}},120000);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&nuvem&&(tab==="assin"||tab==="mes")){ultimaSync=0;sincronizarAssinaturas(true).then(()=>{if(!appHasFocus())render()})}});
 window.__calc={lote,prepararLote,baixarAdiantamento,baixarPDF,extenso,calcular,calcINSS,feriados,DEFAULT_CFG,NEW_EMP};
 start();
