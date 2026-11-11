@@ -240,6 +240,17 @@ section.card.travado .days label{cursor:default}
 .avisos-fixos{border-color:var(--warn);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
 .aviso{padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
 .aviso .quando{font-size:.72rem;color:var(--muted)}
+.adv-banner{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.adv-regras{display:flex;flex-direction:column;gap:8px}
+.adv-regra{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;flex-wrap:wrap}
+.adv-regra>input[type=checkbox]{width:20px;height:20px;flex-shrink:0}
+.adv-pad{width:20px;flex-shrink:0}
+input.mini{width:64px;display:inline-block;padding:4px 6px;text-align:center;margin:0 4px}
+.adv-lista{display:flex;flex-direction:column;gap:10px}
+.adv-item{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.adv-item [data-act=advVer]{align-self:flex-start;padding-inline:0}
+.adv-item.emitida{border-left-color:var(--bad)}.adv-item.dispensada{border-left-color:var(--line);opacity:.8}
+.sw input{width:22px;height:22px}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -701,7 +712,7 @@ async function iniciarNuvem(){
     if(ev==="SIGNED_IN"&&sess&&mode==="login"&&loginModo!=="nova")setTimeout(()=>abrirCasa(sess),0);
     if(ev==="SIGNED_OUT"&&mode!=="func"){mode="login";loginModo="entrar";render()}
   });
-  if(funcSessao){mode="func";funcDados=null;render();carregarFunc(true);atualizarNovosFunc();
+  if(funcSessao){mode="func";funcDados=null;funcTab="tarefas";render();carregarFunc(true);atualizarNovosFunc();carregarAbaFunc("tarefas");
     if(/[?&]assinado=1/.test(location.search))history.replaceState(null,"",location.pathname);return}
   if(/[?&]visto=1/.test(location.search)){history.replaceState(null,"",location.pathname);ultimaSync=0;setTimeout(()=>sincronizarAssinaturas(true),2500)}
   const {data}=await sb.auth.getSession();
@@ -722,6 +733,7 @@ async function abrirCasa_(sess){
     try{await db.pronto}catch(e){document.getElementById("status").innerHTML=`<div class="banner warn">Sem conexão com a nuvem agora. Mostrando os últimos dados salvos neste aparelho; alterações não serão gravadas até a internet voltar.</div>`}
     db.doc("config/geral").onSnapshot(s=>{S.cfg=s.exists?s.data():null;S.cfgLoaded=true;softRender()});
     db.collection("funcionarias").onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.emps=o;S.empsLoaded=true;softRender()});
+    db.collection("advertencias").onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.advs=o;atualizarMobNav();if(tab==="rotina"&&!appHasFocus())render()});
     if(ehCelular()){tab="rotina";rot.sub="painel"}
     subscribeMes();carregarMembros();oferecerMigracao();carregarAcessos();carregarPublicados().then(()=>sincronizarAssinaturas(true));carregarNaoLidos();
   }catch(e){mode="login";render();const m=document.getElementById("lg-msg");if(m)m.textContent="Não foi possível abrir seus dados: "+((e&&e.message)||"erro")+". Confira se o banco de dados foi configurado."}
@@ -937,7 +949,7 @@ async function entrarFunc(){
   btn.disabled=false;
   if(error||!data||data.erro){msg.textContent=error?msgAuth(error):data.erro;msg.classList.add("erro");return}
   funcSessao=data.token;try{localStorage.setItem(SESS_FUNC,funcSessao)}catch(e){}
-  funcDados={nome:data.nome,recibos:undefined};funcTab="recibos";mode="func";render();carregarFunc(true);atualizarNovosFunc();
+  funcDados={nome:data.nome,recibos:undefined};funcTab="tarefas";mode="func";render();carregarFunc(true);atualizarNovosFunc();carregarAbaFunc("tarefas");
 }
 async function carregarFunc(sync){
   if(!funcSessao)return;funcCarregando=true;
@@ -1145,7 +1157,7 @@ function minutosTrabalhados(regs){
 function proximoTipo(regsHoje){const n=regsHoje.filter(r=>!r.desconsiderado).length;return TIPOS_PONTO[n%4][0]}
 
 /* ===== Área da funcionária ===== */
-let funcTab="recibos",funcTarefas=null,funcPonto=null,funcRecados=null,funcNovos=0,relogioTimer=null;
+let funcTab="tarefas",funcTarefas=null,funcPonto=null,funcRecados=null,funcNovos=0,relogioTimer=null;
 async function rpcFunc(fn,args={}){
   const {data,error}=await sb.rpc(fn,{p_token:funcSessao,...args});
   if(error){
@@ -1168,7 +1180,7 @@ async function carregarAbaFunc(aba){
 async function atualizarNovosFunc(){try{funcNovos=await rpcFunc("recados_novos_func")||0;if(mode==="func"&&!appHasFocus())render()}catch(e){}}
 function abasFunc(){
   const pend=(funcDados&&funcDados.recibos||[]).filter(r=>r.status==="pendente").length;
-  const t=[["recibos","Recibos",pend],["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",funcNovos]];
+  const t=[["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",funcNovos],["recibos","Recibos",pend]];
   return `<div class="func-abas" role="tablist">${t.map(([k,l,b])=>`<button type="button" role="tab" data-act="funcTab" data-t="${k}" aria-selected="${funcTab===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
 }
 function viewFuncTarefas(){
@@ -1246,18 +1258,19 @@ async function carregarNaoLidos(){
 function ehCelular(){return window.matchMedia("(max-width:640px)").matches}
 function atualizarMobNav(){
   const on=!!nuvem&&mode!=="login"&&mode!=="func"&&mode!=="loading";document.body.classList.toggle("com-mob",on);if(!on)return;
-  document.querySelectorAll(".mob-nav [data-mob]").forEach(b=>{const k=b.dataset.mob;const at=k==="mais"?tab!=="rotina":(tab==="rotina"&&rot.sub===k);b.setAttribute("aria-current",at?"page":"false")});
+  document.querySelectorAll(".mob-nav [data-mob]").forEach(b=>{const k=b.dataset.mob;const at=k==="mais"?(tab!=="rotina"||rot.sub==="adv"):(tab==="rotina"&&rot.sub===k);b.setAttribute("aria-current",at?"page":"false")});
   const br=document.querySelector('.mob-nav [data-mob="recados"] .badge');const q=totalNaoLidos();if(br){br.textContent=q;br.hidden=!q}
-  const bm=document.querySelector('.mob-nav [data-mob="mais"] .badge');const v=publicados.length?contagemGest().meu_visto:0;if(bm){bm.textContent=v;bm.hidden=!v}
+  const bm=document.querySelector('.mob-nav [data-mob="mais"] .badge');const v=(publicados.length?contagemGest().meu_visto:0)+pendentesAdv();if(bm){bm.textContent=v;bm.hidden=!v}
 }
 function abrirMais(){
   const v=publicados.length?contagemGest().meu_visto:0;
-  const itens=[["mes","Cálculo do mês","Salário, VT, 13º e salvar a folha"],["func","Cadastros","Funcionárias, acesso ao app e documentos"],["recibos","Recibos","PDF de vários meses"],["assin","Assinaturas","Vistos e documentos assinados",v],["regras","Regras gerais","INSS, VT, feriados e backup"]];
+  const itens=[["__adv","Advertências","Regras e advertências por tarefas",pendentesAdv()],["mes","Cálculo do mês","Salário, VT, 13º e salvar a folha"],["func","Cadastros","Funcionárias, acesso ao app e documentos"],["recibos","Recibos","PDF de vários meses"],["assin","Assinaturas","Vistos e documentos assinados",v],["regras","Regras gerais","INSS, VT, feriados e backup"]];
   const d=document.createElement("div");d.className="modal-fundo gaveta-fundo";d.setAttribute("role","dialog");d.setAttribute("aria-modal","true");d.setAttribute("aria-label","Mais opções");
   d.innerHTML=`<div class="gaveta"><div class="gaveta-alca" aria-hidden="true"></div>${itens.map(([k,l,dsc,b])=>`<button type="button" class="gaveta-item ${tab===k?"ativo":""}" data-ir="${k}"><span><b>${l}</b><span class="muted small">${dsc}</span></span>${b?`<span class="badge">${b}</span>`:"<span aria-hidden='true'>›</span>"}</button>`).join("")}
     <button type="button" class="gaveta-item sair" data-ir="__sair"><span><b>Sair da conta</b><span class="muted small">${esc(nuvem?nuvem.email:"")}</span></span></button></div>`;
   d.addEventListener("click",ev=>{const b=ev.target.closest("[data-ir]");if(ev.target===d){d.remove();return}if(!b)return;d.remove();
-    if(b.dataset.ir==="__sair"){sairEmpregador(true);return}tab=b.dataset.ir;try{localStorage.setItem("folha-tab",tab)}catch(e){}if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});render();window.scrollTo(0,0)});
+    if(b.dataset.ir==="__sair"){sairEmpregador(true);return}
+    if(b.dataset.ir==="__adv"){tab="rotina";rot.sub="adv";render();avaliarAdvertencias(true);window.scrollTo(0,0);return}tab=b.dataset.ir;try{localStorage.setItem("folha-tab",tab)}catch(e){}if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});render();window.scrollTo(0,0)});
   document.body.appendChild(d);
 }
 document.querySelector(".mob-nav").addEventListener("click",ev=>{const b=ev.target.closest("[data-mob]");if(!b)return;const k=b.dataset.mob;
@@ -1272,7 +1285,8 @@ function padroesRotina(){
 }
 async function carregarRotina(){
   if(!nuvem)return;const c=nuvem.casa.id;rot.erro=null;padroesRotina();
-  if(rot.sub==="painel"){await carregarPainel();return}
+  if(rot.sub==="painel"){await carregarPainel();avaliarAdvertencias();return}
+  if(rot.sub==="adv"){render();avaliarAdvertencias(true);return}
   rot.carregando=true;
   try{
     if(rot.sub==="tarefas"&&rot.func){
@@ -1302,14 +1316,15 @@ function viewRotina(){
   if(!nuvem)return `<div class="empty"><div class="muted">Disponível quando os dados estão na nuvem.</div></div>`;
   const emps=empList();if(!emps.length)return `<div class="empty"><div class="muted">Cadastre uma funcionária primeiro.</div></div>`;
   padroesRotina();
-  const pend=rot.sub==="painel"?pnl.dados:rot.sub==="tarefas"?rot.tarefas:rot.sub==="ponto"?rot.ponto:rot.recados;
+  const pend=rot.sub==="adv"?true:rot.sub==="painel"?pnl.dados:rot.sub==="tarefas"?rot.tarefas:rot.sub==="ponto"?rot.ponto:rot.recados;
   if((pend===null||pend===undefined)&&!rot.carregando&&!pnl.carregando&&!rot.erro)setTimeout(carregarRotina,0);
-  const subs=[["painel","Painel",0],["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",totalNaoLidos()]];
+  const subs=[["painel","Painel",0],["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",totalNaoLidos()],["adv","Advertências",pendentesAdv()]];
   let h=`<div style="display:flex;flex-direction:column;gap:14px">
     <div class="conta-linha"><h2 class="rot-tit">Rotina</h2>
-      <div class="field" style="min-width:200px" ${rot.sub==="painel"?"hidden":""}><label for="rt-func">Funcionária</label><select id="rt-func" data-rot="func">${emps.map(e=>`<option value="${e.id}" ${rot.func===e.id?"selected":""}>${esc(e.nome||"Sem nome")}${rot.naoLidos[e.id]?` (${rot.naoLidos[e.id]} recado${rot.naoLidos[e.id]>1?"s":""} novo${rot.naoLidos[e.id]>1?"s":""})`:""}</option>`).join("")}</select></div></div>
+      <div class="field" style="min-width:200px" ${rot.sub==="painel"||rot.sub==="adv"?"hidden":""}><label for="rt-func">Funcionária</label><select id="rt-func" data-rot="func">${emps.map(e=>`<option value="${e.id}" ${rot.func===e.id?"selected":""}>${esc(e.nome||"Sem nome")}${rot.naoLidos[e.id]?` (${rot.naoLidos[e.id]} recado${rot.naoLidos[e.id]>1?"s":""} novo${rot.naoLidos[e.id]>1?"s":""})`:""}</option>`).join("")}</select></div></div>
     <div class="func-abas rot-subs" role="tablist">${subs.map(([k,l,b])=>`<button type="button" role="tab" data-act="rotSub" data-s="${k}" aria-selected="${rot.sub===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
   if(rot.sub==="painel")return h+viewPainel()+`</div>`;
+  if(rot.sub==="adv")return h+viewAdvertencias()+`</div>`;
   if(rot.erro)return h+`<div class="banner warn">${esc(rot.erro)}</div></div>`;
   const e=S.emps[rot.func]||{};
   if(rot.sub==="tarefas"){
@@ -1471,6 +1486,7 @@ function viewPainel(){
   if(!D)return filtros+`<div class="muted">Carregando painel…</div>`;
   if(D.erro)return filtros+`<div class="banner warn">${esc(D.erro)}</div>`;
   let h="";
+  const qa=pendentesAdv();if(qa)h+=`<div class="banner warn adv-banner"><span><b>${qa} advertência(s) sugerida(s)</b> pelas regras de tarefas não cumpridas.</span><button type="button" class="primary" data-act="irAdv">Revisar</button></div>`;
   const nome=id=>{const e=S.emps[id];return e&&e.nome?e.nome:"Funcionária removida"};
   const dias=D.dias.slice(-(+pnl.periodo));const noPer=new Set(dias);
   const oc=D.oc.filter(o=>(!pnl.func||o.t.func_id===pnl.func));
@@ -1536,6 +1552,138 @@ function viewPainel(){
 }
 function verFoto(url){const d=document.createElement("div");d.className="modal-fundo";d.innerHTML=`<div class="modal foto-modal"><img src="${esc(url)}" alt="Foto da tarefa"><div class="modal-acoes"><button type="button" class="primary">Fechar</button></div></div>`;
   d.addEventListener("click",ev=>{if(ev.target===d||ev.target.closest("button"))d.remove()});document.body.appendChild(d)}
+
+/* ---------- Advertências por tarefas não cumpridas ---------- */
+const ADV_PADRAO={ativo:false,usaSemana:true,semanaN:1,usaSeq:true,seqK:2,tolerancia:1,auto:false,desde:null};
+const advState={avaliando:false,ultima:0,erro:null,abertas:{}};
+function cfgAdv(){return {...ADV_PADRAO,...((S.cfg||{}).advertencias||{})}}
+function inicioSemana(dk){const d=new Date(dk+"T12:00:00");const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return diaLocal(d)}
+function somaDias(dk,n){const d=new Date(dk+"T12:00:00");d.setDate(d.getDate()+n);return diaLocal(d)}
+function difDias(a,b){return Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5)}
+function listaAdvs(){return Object.values(S.advs||{}).sort((a,b)=>(b.semana_ini||"")<(a.semana_ini||"")?-1:1)}
+
+/* Analisa as semanas fechadas desde a ativação e cria advertências sugeridas (sem repetir) */
+async function avaliarAdvertencias(forcar){
+  const A=cfgAdv();if(!nuvem||!A.ativo||!A.desde||advState.avaliando)return;
+  if(!forcar&&Date.now()-advState.ultima<5*60000)return;
+  advState.avaliando=true;advState.ultima=Date.now();advState.erro=null;
+  try{
+    const hoje=diaLocal(new Date());const semAtual=inicioSemana(hoje);
+    let ini=inicioSemana(A.desde);const limite=somaDias(semAtual,-7*12);if(ini<limite)ini=limite;
+    const fim=somaDias(semAtual,-1);if(ini>fim){advState.avaliando=false;return}
+    const c=nuvem.casa.id;
+    const [tq,pq]=await Promise.all([sb.from("tarefas").select("*").eq("casa_id",c),
+      sb.from("registros_ponto").select("func_id,momento,desconsiderado").eq("casa_id",c).gte("momento",new Date(ini+"T00:00:00").toISOString()).lt("momento",new Date(semAtual+"T00:00:00").toISOString())]);
+    if(tq.error)throw tq.error;if(pq.error)throw pq.error;
+    const tarefas=tq.data||[];if(!tarefas.length){advState.avaliando=false;return}
+    const fq=await sb.from("tarefas_feitas").select("tarefa_id,data,feita_em,revisao").in("tarefa_id",tarefas.map(t=>t.id)).gte("data",ini);if(fq.error)throw fq.error;
+    const fmap={};(fq.data||[]).forEach(f=>fmap[f.tarefa_id+"|"+f.data]=f);
+    const trab={};(pq.data||[]).filter(r=>!r.desconsiderado).forEach(r=>trab[r.func_id+"|"+diaLocal(r.momento)]=true);
+    // Não cumpridas por funcionária e semana
+    const porFS={};
+    for(let dk=ini;dk<=fim;dk=somaDias(dk,1))for(const t of tarefas){
+      if(!aplicaNoDia(t,dk)||!trab[t.func_id+"|"+dk])continue;
+      const f=fmap[t.id+"|"+dk];const ok=f&&f.revisao!=="refazer"&&difDias(diaLocal(f.feita_em),dk)<=A.tolerancia;
+      if(ok)continue;const k=t.func_id+"|"+inicioSemana(dk);(porFS[k]=porFS[k]||[]).push({texto:t.texto,data:dk,refazer:!!(f&&f.revisao==="refazer")});
+    }
+    const novas=[];const existe=k=>!!(S.advs&&S.advs[k]);
+    const funcs=[...new Set(tarefas.map(t=>t.func_id))];
+    for(const fid of funcs){
+      let seq=0;
+      for(let w=ini;w<semAtual;w=somaDias(w,7)){
+        const faltas=porFS[fid+"|"+w]||[];const wf=somaDias(w,6);
+        if(A.usaSemana&&faltas.length>A.semanaN){const key=`sem-${fid}-${w}`;if(!existe(key))novas.push({id:key,func_id:fid,regra:"semana",
+          descricao:`Deixou de cumprir ${faltas.length} tarefas na semana de ${fmtDiaCurto(w)} a ${fmtDiaCurto(wf)} (limite: ${A.semanaN}).`,semana_ini:w,semana_fim:wf,faltas})}
+        seq=faltas.length?seq+1:0;
+        if(A.usaSeq&&seq>0&&seq%A.seqK===0){const wi=somaDias(w,-7*(A.seqK-1));const key=`seq-${fid}-${w}`;
+          if(!existe(key)){let todas=[];for(let x=wi;x<=w;x=somaDias(x,7))todas=todas.concat(porFS[fid+"|"+x]||[]);
+            novas.push({id:key,func_id:fid,regra:"seq",descricao:`Deixou de cumprir tarefas por ${A.seqK} semanas seguidas (de ${fmtDiaCurto(wi)} a ${fmtDiaCurto(wf)}).`,semana_ini:wi,semana_fim:wf,faltas:todas})}}
+      }
+    }
+    for(const a of novas){const d={...a,status:"sugerida",criado_em:new Date().toISOString()};S.advs=S.advs||{};S.advs[a.id]=d;await write("advertencias/"+a.id,d)}
+    if(novas.length&&A.auto){for(const a of novas){try{await emitirAdvertencia(a.id,true)}catch(e){}}}
+    if(novas.length)toast(`${novas.length} advertência(s) ${A.auto?"emitida(s)":"sugerida(s)"} pelas regras`);
+  }catch(e){advState.erro=/does not exist|Could not find|PGRST20|column/.test((e.code||"")+(e.message||""))?"Para usar as advertências, as tarefas e o ponto precisam estar ativos (scripts rotina.sql e tarefas_fotos.sql).":(e.message||"Erro ao analisar")}
+  advState.avaliando=false;if(tab==="rotina"&&!appHasFocus())render();
+}
+function pendentesAdv(){return listaAdvs().filter(a=>a.status==="sugerida").length}
+
+/* PDF da advertência */
+function desenharAdvertencia(doc,e,c,a){
+  const W=210,M=18,CW=W-2*M,AC=[44,73,176],INK=[24,32,46],MUT=[91,101,120],LN=[213,219,229];
+  const T=(t,x,y,o={})=>{doc.setFont("helvetica",o.b?"bold":"normal");doc.setFontSize(o.s||10);doc.setTextColor(...(o.c||INK));doc.text(String(t),x,y,o.a?{align:o.a}:undefined)};
+  const P=(t,y,o={})=>{doc.setFont("helvetica",o.b?"bold":"normal");doc.setFontSize(o.s||10.5);doc.setTextColor(...(o.c||INK));const L=doc.splitTextToSize(t,CW);doc.text(L,M,y);return y+L.length*(o.s?o.s*0.48:5.1)};
+  doc.setFillColor(...AC);doc.rect(0,0,W,5,"F");
+  T("ADVERTÊNCIA DISCIPLINAR",W/2,24,{b:1,s:16,a:"center"});
+  let y=38;
+  y=P(`Empregador(a): ${c.empregadorNome||"________________________"}${c.empregadorCPF?" – CPF "+c.empregadorCPF:""}`,y);
+  y=P(`Empregado(a): ${e.nome||""}${e.cpf?" – CPF "+e.cpf:""}${e.funcao?" – "+e.funcao:""}`,y)+4;
+  y=P(`Pela presente, fica V.Sa. ADVERTIDA em razão do descumprimento das tarefas previstas em sua rotina de trabalho, registradas e acompanhadas pelo aplicativo Folha da Casa, conforme abaixo:`,y)+3;
+  y=P(a.descricao,y,{b:1})+2;
+  doc.setDrawColor(...LN);
+  const fal=(a.faltas||[]).slice().sort((x,z)=>x.data<z.data?-1:1);
+  fal.slice(0,28).forEach(f=>{y=P(`•  ${fmtDiaCurto(f.data)}/${f.data.slice(0,4)} – ${f.texto}${f.refazer?" (devolvida para refazer e não refeita)":""}`,y,{s:9.5})});
+  if(fal.length>28)y=P(`… e mais ${fal.length-28} ocorrência(s).`,y,{s:9.5,c:MUT});
+  y+=4;
+  y=P(`Esclarecemos que o cumprimento das tarefas atribuídas faz parte das obrigações do contrato de trabalho e que a reincidência poderá acarretar a aplicação de penalidades mais severas, inclusive a dispensa por justa causa por desídia no desempenho das funções, nos termos do art. 27, inciso V, da Lei Complementar nº 150/2015.`,y)+3;
+  y=P(`Solicitamos que dê ciência desta advertência assinando abaixo. A assinatura indica apenas ciência e não concordância.`,y)+6;
+  const cidade=UFS[c.uf]?UFS[c.uf].cap:"";
+  y=Math.max(y,215);
+  T(`${cidade?cidade+", ":""}${new Date().toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"})}`,M,y);
+  y+=22;doc.setDrawColor(...INK);doc.setLineWidth(.3);
+  doc.line(M,y,M+78,y);doc.line(W-M-78,y,W-M,y);
+  T(c.empregadorNome||"Empregador(a)",M,y+5,{s:8.5});T("Empregador(a)",M,y+9.5,{s:8,c:MUT});
+  T(e.nome||"Empregado(a)",W-M,y+5,{s:8.5,a:"right"});T("Ciente – Empregado(a)",W-M,y+9.5,{s:8,c:MUT,a:"right"});
+  y+=20;T("Em caso de recusa em assinar, colher a assinatura de duas testemunhas:",M,y,{s:8,c:MUT});
+  y+=16;doc.line(M,y,M+78,y);doc.line(W-M-78,y,W-M,y);T("Testemunha 1",M,y+5,{s:8,c:MUT});T("Testemunha 2",W-M,y+5,{s:8,c:MUT,a:"right"});
+  T(`Gerado pela Folha da Casa em ${new Date().toLocaleDateString("pt-BR")}`,M,290,{s:7,c:MUT});
+}
+function pdfAdvertencia(id){
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)throw new Error("O gerador de PDF não carregou.");
+  const a=S.advs[id];const e=S.emps[a.func_id]||{nome:"Funcionária"};const c=cfg();
+  const doc=new J({unit:"mm",format:"a4"});doc.setProperties({title:`Advertência ${e.nome||""}`});desenharAdvertencia(doc,e,c,a);return {doc,e,c,a};
+}
+async function emitirAdvertencia(id,semPergunta){
+  const {doc,e,a}=pdfAdvertencia(id);const ac=acessos&&acessos[a.func_id];
+  if(ac&&ac.ativo){
+    const pdf=doc.output("datauristring").split(",")[1];
+    await api({acao:"documento",casa_id:nuvem.casa.id,func_id:a.func_id,titulo:`Advertência – ${fmtDiaCurto(a.semana_ini)} a ${fmtDiaCurto(a.semana_fim)}`,tipo:"advertencia",nome:e.nome||"Funcionária",empregador_nome:cfg().empregadorNome||nuvem.email,pdf_base64:pdf,app_url:location.origin+"/?assinado=1"});
+    await carregarPublicados();
+  }
+  const d={...a,status:"emitida",emitida_em:new Date().toISOString(),via:ac&&ac.ativo?"zapsign":"impressa"};S.advs[id]=d;await write("advertencias/"+id,d);
+  return d;
+}
+
+/* Tela */
+let advDraft=null;
+function viewAdvertencias(){
+  const A=advDraft||cfgAdv();const L=listaAdvs().filter(a=>!pnl.func||a.func_id===pnl.func);
+  const nome=id=>{const e=S.emps[id];return e&&e.nome?e.nome:"Funcionária removida"};
+  let h=`<section class="card"><div class="conta-linha"><h2>Regras de advertência</h2><label class="check sw"><input type="checkbox" id="adv-ativo" data-adv="ativo" ${A.ativo?"checked":""}><b>${A.ativo?"Ligadas":"Desligadas"}</b></label></div>
+    <div class="muted small">O app analisa as semanas fechadas (segunda a domingo), só os dias em que a funcionária trabalhou (com ponto), e sugere advertências quando uma regra é atingida.${A.ativo&&A.desde?` Vale para semanas a partir de ${fmtDiaCurto(inicioSemana(A.desde))}/${A.desde.slice(0,4)}.`:""}</div>
+    <div class="adv-regras">
+      <label class="adv-regra"><input type="checkbox" data-adv="usaSemana" ${A.usaSemana?"checked":""}><span>Deixou de cumprir <b>mais de</b> <input type="number" min="0" max="50" step="1" class="mini" data-adv="semanaN" value="${A.semanaN}" aria-label="Quantidade de tarefas"> tarefa(s) <b>na mesma semana</b></span></label>
+      <label class="adv-regra"><input type="checkbox" data-adv="usaSeq" ${A.usaSeq?"checked":""}><span>Deixou de cumprir alguma tarefa por <input type="number" min="2" max="12" step="1" class="mini" data-adv="seqK" value="${A.seqK}" aria-label="Semanas seguidas"> <b>semanas seguidas</b></span></label>
+      <label class="adv-regra"><span class="adv-pad"></span><span>Conta como cumprida a tarefa concluída até <input type="number" min="0" max="7" step="1" class="mini" data-adv="tolerancia" value="${A.tolerancia}" aria-label="Dias de tolerância"> dia(s) depois</span></label>
+      <label class="adv-regra"><input type="checkbox" data-adv="auto" ${A.auto?"checked":""}><span><b>Emitir automaticamente</b>, sem a minha revisão <span class="muted small">(não recomendado: confira cada caso antes)</span></span></label>
+    </div>
+    <div class="muted small">Tarefa não cumprida: tarefa de um dia trabalhado que não foi concluída dentro da tolerância, ou que foi devolvida para refazer e não foi refeita.</div>
+    <div class="actions"><button type="button" class="primary" data-act="advSalvar">Salvar regras</button>${A.ativo?`<button type="button" data-act="advAnalisar">Analisar agora</button>`:""}</div></section>`;
+  if(advState.erro)h+=`<div class="banner warn">${esc(advState.erro)}</div>`;
+  const sug=L.filter(a=>a.status==="sugerida"),out=L.filter(a=>a.status!=="sugerida");
+  const card=a=>{const ab=advState.abertas[a.id];const e=S.emps[a.func_id]||{};const ac=acessos&&acessos[a.func_id];
+    return `<article class="adv-item ${a.status}"><div class="conta-linha"><div style="min-width:0"><b>${esc(nome(a.func_id))}</b><div class="small">${esc(a.descricao)}</div></div>
+      <span class="chip ${a.status==="emitida"?"bad-chip":a.status==="dispensada"?"":"informal"}" style="margin-left:0">${a.status==="sugerida"?"Sugerida":a.status==="emitida"?`Emitida ${a.emitida_em?new Date(a.emitida_em).toLocaleDateString("pt-BR"):""}`:"Dispensada"}</span></div>
+      <button type="button" class="ghost small" data-act="advVer" data-id="${a.id}" aria-expanded="${!!ab}">${ab?"Ocultar":"Ver"} tarefas não cumpridas (${(a.faltas||[]).length})</button>
+      ${ab?`<ul class="lista-simples">${(a.faltas||[]).slice().sort((x,z)=>x.data<z.data?-1:1).map(f=>`<li><span>${esc(f.texto)}</span><span class="small muted">${fmtDiaCurto(f.data)} (${DIAS[new Date(f.data+"T12:00:00").getDay()]})${f.refazer?" · devolvida para refazer":""}</span></li>`).join("")}</ul>`:""}
+      <div class="foto-acoes">${a.status==="sugerida"?`<button type="button" class="primary" data-act="advEmitir" data-id="${a.id}">Emitir advertência</button><button type="button" data-act="advDispensar" data-id="${a.id}">Dispensar</button>`:""}
+        <button type="button" class="ghost" data-act="advPdf" data-id="${a.id}">Baixar PDF</button>${a.status==="dispensada"?`<button type="button" class="ghost" data-act="advReabrir" data-id="${a.id}">Reabrir</button>`:""}</div>
+      ${a.status==="sugerida"?`<div class="muted small">${ac&&ac.ativo?"Ao emitir, o documento vai para ela assinar (ciência) na ZapSign.":"Ela não tem acesso ao app: ao emitir, baixe o PDF e colha a assinatura no papel."}</div>`:a.via==="zapsign"?`<div class="muted small">Enviada para assinatura na ZapSign. Acompanhe em Assinaturas.</div>`:""}
+    </article>`};
+  h+=`<section class="card"><div class="conta-linha"><h2>Para revisar</h2><span class="muted small">${advState.avaliando?"Analisando…":sug.length+" sugerida(s)"}</span></div>${sug.length?`<div class="adv-lista">${sug.map(card).join("")}</div>`:`<div class="muted">${A.ativo?"Nenhuma advertência sugerida.":"Ligue as regras acima para o app analisar as tarefas."}</div>`}</section>`;
+  if(out.length)h+=`<section class="card"><h2>Histórico</h2><div class="adv-lista">${out.map(card).join("")}</div></section>`;
+  return h;
+}
 
 async function start(){
   render();
@@ -2242,6 +2390,7 @@ view.addEventListener("change",ev=>{
   {const t=ev.target;
    if(t.dataset.tarefa){const id=t.dataset.tarefa,feita=t.checked;t.disabled=true;
      rpcFunc("marcar_tarefa",{p_tarefa:id,p_feita:feita}).then(()=>carregarAbaFunc("tarefas")).catch(e=>{t.checked=!feita;t.disabled=false;tratarErroFunc(e)});return}
+   if(t.dataset.adv){advDraft=advDraft||cfgAdv();const k=t.dataset.adv;advDraft[k]=t.type==="checkbox"?t.checked:n(t.value);if(t.type==="checkbox")render();return}
    if(t.dataset.rotCk){rot[t.dataset.rotCk]=t.checked;return}
    if(t.dataset.pnl){pnl[t.dataset.pnl]=t.value;if(t.dataset.pnl==="periodo"){pnl.dados=null;render();carregarPainel()}else render();return}
    if(t.dataset.rot){const k=t.dataset.rot;rot[k]=t.value;if(k!=="repet"){rot.tarefas=rot.ponto=rot.recados=null;render();carregarRotina()}else render();return}
@@ -2284,6 +2433,22 @@ view.addEventListener("click",async ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="gerarLote"){gerarLote(b)}
+  else if(a==="irAdv"){rot.sub="adv";render();avaliarAdvertencias(true);window.scrollTo(0,0)}
+  else if(a==="advSalvar"){const ant=cfgAdv();const rg=advDraft||ant;const novo={...rg,semanaN:Math.max(0,Math.round(n(rg.semanaN))),seqK:Math.max(2,Math.round(n(rg.seqK))||2),tolerancia:Math.max(0,Math.round(n(rg.tolerancia)))};
+    if(novo.ativo&&!ant.ativo)novo.desde=diaLocal(new Date());
+    if(novo.ativo&&!novo.usaSemana&&!novo.usaSeq){toast("Marque pelo menos uma regra.");return}
+    S.cfg={...cfg(),advertencias:novo};advDraft=null;clearTimeout(timers["cfg"]);await write("config/geral",S.cfg);render();toast(novo.ativo?"Regras salvas e ligadas":"Regras salvas");if(novo.ativo)avaliarAdvertencias(true)}
+  else if(a==="advAnalisar"){b.disabled=true;b.textContent="Analisando…";await avaliarAdvertencias(true);render();toast("Análise concluída")}
+  else if(a==="advVer"){advState.abertas[b.dataset.id]=!advState.abertas[b.dataset.id];render()}
+  else if(a==="advPdf"){try{const {doc,e}=pdfAdvertencia(b.dataset.id);await salvarPDF(doc,`advertencia-${slugNome(e.nome)}-${S.advs[b.dataset.id].semana_fim}.pdf`)}catch(err){toast(err.message)}}
+  else if(a==="advEmitir"){const id=b.dataset.id,ad=S.advs[id];const e=S.emps[ad.func_id]||{};const ac=acessos&&acessos[ad.func_id];
+    const ok=await confirmar("Emitir advertência?",`<p><b>${esc(e.nome||"")}</b>: ${esc(ad.descricao)}</p>${ac&&ac.ativo?`<div class="banner info">O documento será enviado para ela assinar (ciência) na ZapSign, com selfie, e aparecerá na área dela.</div>`:`<div class="banner info">Ela não tem acesso ao app. O PDF será baixado para você imprimir e colher a assinatura dela.</div>`}<p class="muted small">Confira as tarefas listadas antes de emitir.</p>`,"Emitir");if(!ok)return;
+    b.disabled=true;b.textContent="Emitindo…";
+    try{const d=await emitirAdvertencia(id);if(d.via==="impressa"){const {doc}=pdfAdvertencia(id);await salvarPDF(doc,`advertencia-${slugNome(e.nome)}-${ad.semana_fim}.pdf`)}toast("Advertência emitida");render()}
+    catch(err){toast("Não foi possível emitir: "+err.message);b.disabled=false;b.textContent="Emitir advertência"}}
+  else if(a==="advDispensar"){if(!await confirmar("Dispensar esta advertência?","<p>Ela sai da lista para revisar e fica no histórico como dispensada. Você pode reabrir depois.</p>","Dispensar","Voltar"))return;
+    const id=b.dataset.id;const d={...S.advs[id],status:"dispensada",dispensada_em:new Date().toISOString()};S.advs[id]=d;await write("advertencias/"+id,d);render()}
+  else if(a==="advReabrir"){const id=b.dataset.id;const d={...S.advs[id],status:"sugerida"};S.advs[id]=d;await write("advertencias/"+id,d);render()}
   else if(a==="salvarAviso"){const para=b.dataset.para,fid=para==="*"?"*":rot.func;const txt=(document.getElementById(para==="*"?"av-todas":"av-ela").value||"").trim();
     b.disabled=true;const {error}=await sb.from("avisos").upsert({casa_id:nuvem.casa.id,func_id:fid,texto:txt,atualizado_em:new Date().toISOString()});b.disabled=false;
     if(error){toast("Não foi possível salvar: "+error.message);return}toast(txt?"Aviso salvo":"Aviso apagado");carregarRotina()}
