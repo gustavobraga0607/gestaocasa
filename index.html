@@ -1356,12 +1356,19 @@ async function prepararLote(){
 }
 function viewRecibos(){
   const hoje=new Date();
-  if(!lote.de){lote.de=ymKey(hoje.getFullYear(),0);lote.ate=ymKey(hoje.getFullYear(),hoje.getMonth())}
+  if(!lote.de){
+    // Começa no mês da admissão mais antiga (limite de 36 meses); sem admissão, em janeiro do ano atual
+    lote.ate=ymKey(hoje.getFullYear(),hoje.getMonth());
+    const adms=empList().map(e=>e.admissao).filter(dataOk).sort();
+    let de=adms.length?adms[0].slice(0,7):ymKey(hoje.getFullYear(),0);
+    const min=(()=>{const d=new Date(hoje.getFullYear(),hoje.getMonth()-35,1);return ymKey(d.getFullYear(),d.getMonth())})();
+    if(de<min)de=min;if(de>lote.ate)de=lote.ate;lote.de=de;
+  }
   const todas=empList();if(!lote.emps)lote.emps=new Set(todas.map(e=>e.id));
   const meses=mesesEntre(lote.de,lote.ate);
   let h=`<div style="display:flex;flex-direction:column;gap:16px">
   <section class="card"><h2>Recibos de vários meses</h2>
-    <div class="muted small">Escolha o período e as funcionárias. Sai um único PDF com os recibos de todos os meses, um após o outro.</div>
+    <div class="muted small">Escolha o período e as funcionárias. Sai um único PDF com os recibos de todos os meses, um após o outro. O período começa no mês da admissão mais antiga; meses antes da admissão de cada funcionária não entram.</div>
     <div class="grid-form">
       <div class="field"><label for="lt-de">De</label><input type="month" id="lt-de" data-lote="de" value="${lote.de}"></div>
       <div class="field"><label for="lt-ate">Até</label><input type="month" id="lt-ate" data-lote="ate" value="${lote.ate}"></div>
