@@ -233,6 +233,13 @@ section.card.travado .days label{cursor:default}
 .gaveta-item>span:first-child{display:flex;flex-direction:column;gap:2px}
 .gaveta-item.ativo{background:var(--accent-soft)}
 .gaveta-item.sair b{color:var(--bad)}
+.tf-opcoes{display:flex;gap:6px;flex-wrap:wrap}
+.opc{padding:3px 10px;min-height:0;font-size:.78rem;border-radius:99px;color:var(--muted);background:var(--sunken);border-color:transparent}
+.opc.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.tf-checks{display:flex;gap:16px;flex-wrap:wrap}
+.avisos-fixos{border-color:var(--warn);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
+.aviso{padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.aviso .quando{font-size:.72rem;color:var(--muted)}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -1153,7 +1160,8 @@ async function carregarAbaFunc(aba){
   try{
     if(aba==="tarefas")funcTarefas=await rpcFunc("minhas_tarefas");
     if(aba==="ponto")funcPonto=await rpcFunc("meu_ponto");
-    if(aba==="recados"){funcRecados=await rpcFunc("meus_recados");funcNovos=0}
+    if(aba==="recados"){funcRecados=await rpcFunc("meus_recados");funcNovos=0;
+      try{funcRecados.avisos=(await rpcFunc("meus_avisos")).avisos||[]}catch(e){if(e.sessao)throw e;funcRecados.avisos=[]}}
   }catch(e){if(aba==="tarefas")funcTarefas={erro:e.message};if(aba==="ponto")funcPonto={erro:e.message};if(aba==="recados")funcRecados={erro:e.message};tratarErroFunc(e)}
   if(mode==="func")render();
 }
@@ -1174,13 +1182,13 @@ function viewFuncTarefas(){
     return `<li class="tarefa2 ${estado}"><div class="tarefa2-txt"><span class="tarefa2-tit">${t.feita_em?"✓ ":""}${esc(t.texto)}</span>
       ${t.atrasada&&!t.feita_em?`<span class="atraso-txt">Atrasada desde ${fmtDiaCurto(t.atrasada_desde||t.data)}${t.dias_atraso>1?` · ${t.dias_atraso} dias sem fazer`:""}${t.data===d.data?" · vale também para hoje":""}</span>`:""}
       ${t.refazer?`<span class="atraso-txt">Refazer: ${esc(t.obs||"")}</span>`:""}
-      ${t.feita_em?`<span class="muted small">Concluída às ${esc(t.hora_informada||hhmm(t.feita_em))}${t.com_foto?" · 📷 foto enviada":""}${t.aprovada?" · aprovada pelo empregador":""}</span>`:""}</div>
+      ${t.feita_em?`<span class="muted small">Concluída às ${esc(t.hora_informada||hhmm(t.feita_em))}${t.com_foto?" · 📷 foto enviada":""}${t.aprovada?" · aprovada pelo empregador":t.precisa_aprovacao!==false?" · aguardando aprovação":""}</span>`:t.precisa_foto===false?`<span class="muted small">Foto opcional</span>`:""}</div>
       ${t.feita_em?(t.aprovada||t.atrasada?"":`<button type="button" class="ghost small" data-act="desfazerTarefa" data-id="${t.id}">Desfazer</button>`)
         :`<button type="button" class="primary" data-act="concluirTarefa" data-id="${t.id}" data-data="${t.data}">${t.refazer?"Refazer":"Concluir"}</button>`}</li>`};
   let h="";
   if(atr.length)h+=`<section class="card atrasadas-card"><h2>Atrasadas</h2><div class="small">Tarefas que ficaram sem fazer em dias anteriores. Faça o quanto antes.</div><ul class="tarefas">${atr.map(item).join("")}</ul></section>`;
   h+=`<section class="card"><div class="conta-linha"><div><h2>Tarefas de hoje</h2><div class="muted small">${esc(dt)}</div></div>${hoje.length?`<span class="chip ${feitas===hoje.length?"ok-chip":"informal"}">${feitas} de ${hoje.length} feitas</span>`:""}</div>
-    ${hoje.length?`<ul class="tarefas">${hoje.map(item).join("")}</ul><div class="muted small">Para concluir, informe a hora em que terminou e tire uma foto da tarefa pronta.</div>`:`<div class="muted">Nenhuma tarefa para hoje.</div>`}</section>`;
+    ${hoje.length?`<ul class="tarefas">${hoje.map(item).join("")}</ul><div class="muted small">Para concluir, informe a hora em que terminou e, quando pedido, tire uma foto da tarefa pronta.</div>`:`<div class="muted">Nenhuma tarefa para hoje.</div>`}</section>`;
   return h;
 }
 function viewFuncPonto(){
@@ -1207,7 +1215,9 @@ function viewFuncRecados(){
   const d=funcRecados;if(!d)return `<section class="card"><div class="muted">Carregando recados…</div></section>`;
   if(d.erro)return `<section class="card"><div class="muted">${esc(d.erro)}</div></section>`;
   const L=d.recados||[];
-  return `<section class="card"><h2>Recados para o empregador</h2>
+  const av=(d.avisos||[]);
+  return `${av.length?`<section class="card avisos-fixos"><h2>📌 Avisos gerais</h2>${av.map(a=>`<div class="aviso"><div>${esc(a.texto).replace(/\n/g,"<br>")}</div><span class="quando">${a.para==="todas"?"Para todas":"Para você"} · atualizado em ${new Date(a.atualizado_em).toLocaleDateString("pt-BR")}</span></div>`).join("")}</section>`:""}
+    <section class="card"><h2>Recados para o empregador</h2>
     <div class="chat">${L.length?L.map(m=>`<div class="msg ${m.de==="func"?"eu":"ele"}">${m.categoria!=="recado"?`<span class="cat">${esc(NOME_CAT[m.categoria]||"")}</span>`:""}<div>${esc(m.texto).replace(/\n/g,"<br>")}</div><span class="quando">${m.de==="emp"?"Empregador · ":""}${new Date(m.criado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${m.de==="func"&&m.lido_em?" · lido":""}</span></div>`).join(""):`<div class="muted small">Nenhum recado ainda. Escreva abaixo: atrasos, faltas, algo que acabou em casa ou qualquer informação.</div>`}</div>
     <form id="form-recado" class="form-recado">
       <select id="rc-cat" aria-label="Tipo de recado">${CAT_RECADO.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select>
@@ -1281,6 +1291,8 @@ async function carregarRotina(){
     if(rot.sub==="recados"&&rot.func){
       const {data,error}=await sb.from("recados").select("*").eq("casa_id",c).eq("func_id",rot.func).order("criado_em",{ascending:false}).limit(100);if(error)throw error;
       rot.recados=(data||[]).reverse();
+      const av=await sb.from("avisos").select("*").eq("casa_id",c).in("func_id",["*",rot.func]);
+      rot.avisos=av.error?null:{todas:(av.data||[]).find(x=>x.func_id==="*")||null,ela:(av.data||[]).find(x=>x.func_id===rot.func)||null};
       if(rot.naoLidos[rot.func]){await sb.rpc("marcar_recados_lidos",{p_casa:c,p_func:rot.func});rot.naoLidos[rot.func]=0;atualizarAbaRotina()}
     }
   }catch(e){rot.erro=/does not exist|Could not find|PGRST20/.test((e.code||"")+(e.message||""))?"Para usar tarefas, ponto e recados, rode o script supabase/rotina.sql no Supabase.":(e.message||"Erro ao carregar")}
@@ -1305,11 +1317,13 @@ function viewRotina(){
     h+=`<section class="card"><div class="conta-linha"><h2>Tarefas</h2><div class="field"><label for="rt-data">Dia</label><input type="date" id="rt-data" data-rot="data" value="${rot.data}"></div></div>
       ${L===null?'<div class="muted">Carregando…</div>':!L.length?'<div class="muted">Nenhuma tarefa neste dia.</div>':`<ul class="tarefas adm">${L.map(t=>`<li><span class="${rot.feitas[t.id]?"ok-txt":""}">${rot.feitas[t.id]?"✓ ":"○ "}${esc(t.texto)}</span>
         <span class="muted small">${t.dias?"repete: "+t.dias.map(d=>dowNome[d].slice(0,3)).join(", "):"só neste dia"}${rot.feitas[t.id]?` · feita às ${rot.feitas[t.id].hora_informada?rot.feitas[t.id].hora_informada.slice(0,5):hhmm(rot.feitas[t.id].feita_em)}${rot.feitas[t.id].foto?" · 📷":""}${rot.feitas[t.id].revisao==="ok"?" · aprovada":""}`:""}</span>
+        <span class="tf-opcoes"><button type="button" class="opc ${t.precisa_foto!==false?"on":""}" data-act="tfOpc" data-id="${t.id}" data-k="precisa_foto" aria-pressed="${t.precisa_foto!==false}" title="Tocar para ${t.precisa_foto!==false?"não exigir":"exigir"} foto">📷 ${t.precisa_foto!==false?"Exige foto":"Foto opcional"}</button><button type="button" class="opc ${t.precisa_aprovacao!==false?"on":""}" data-act="tfOpc" data-id="${t.id}" data-k="precisa_aprovacao" aria-pressed="${t.precisa_aprovacao!==false}" title="Tocar para mudar">✔ ${t.precisa_aprovacao!==false?"Precisa de aprovação":"Sem aprovação"}</button></span>
         <button type="button" class="ghost danger" data-act="rmTarefa" data-id="${t.id}" data-rep="${t.dias?1:0}">${t.dias?"Parar de repetir":"Remover"}</button></li>`).join("")}</ul>`}
       <form id="form-tarefa" class="form-tarefa">
         <input type="text" id="tf-txt" maxlength="300" placeholder="Nova tarefa, ex.: Trocar a roupa de cama" aria-label="Nova tarefa">
         <select id="tf-rep" data-rot="repet" aria-label="Repetição"><option value="dia" ${rot.repet==="dia"?"selected":""}>Só em ${new Date(rot.data+"T12:00:00").toLocaleDateString("pt-BR")}</option><option value="escala" ${rot.repet==="escala"?"selected":""}>Todos os dias de trabalho dela</option><option value="dias" ${rot.repet==="dias"?"selected":""}>Escolher os dias da semana</option></select>
         ${rot.repet==="dias"?`<div class="days" style="grid-column:1/-1">${DIAS.map((d,i)=>`<label><input type="checkbox" data-tf-dia="${i}" ${(e.dias||[]).includes(i)?"checked":""}>${d}</label>`).join("")}</div>`:""}
+        <div class="tf-checks" style="grid-column:1/-1"><label class="check"><input type="checkbox" id="tf-foto" ${rot.tfFoto!==false?"checked":""} data-rot-ck="tfFoto">Exigir foto ao concluir</label><label class="check"><input type="checkbox" id="tf-apr" ${rot.tfApr!==false?"checked":""} data-rot-ck="tfApr">Precisa da minha aprovação</label></div>
         <button type="submit" class="primary">Adicionar tarefa</button>
       </form></section>`;
   }
@@ -1337,7 +1351,15 @@ function viewRotina(){
   }
   if(rot.sub==="recados"){
     const L=rot.recados;
-    h+=`<section class="card"><h2>Recados de ${esc(e.nome||"")}</h2>
+    const A=rot.avisos;
+    h+=`<section class="card avisos-fixos"><h2>📌 Avisos gerais</h2><div class="muted small">Ficam fixos no topo da aba Recados de cada funcionária até você mudar ou apagar.</div>
+      ${A===null?`<div class="banner warn small">Para usar os avisos gerais, rode de novo o script supabase/tarefas_fotos.sql no Supabase.</div>`:A===undefined?'<div class="muted">Carregando…</div>':`
+      <div class="field"><label for="av-todas">Aviso para todas as funcionárias</label><textarea id="av-todas" rows="3" maxlength="3000" placeholder="Ex.: Nunca deixe louças sem lavar e guardar.">${esc(A.todas?A.todas.texto:"")}</textarea>
+        <div class="conta-linha"><span class="muted small">${A.todas&&A.todas.texto?"Atualizado em "+new Date(A.todas.atualizado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"Sem aviso"}</span><button type="button" class="primary" data-act="salvarAviso" data-para="*">Salvar aviso para todas</button></div></div>
+      <div class="field"><label for="av-ela">Aviso só para ${esc(e.nome||"ela")}</label><textarea id="av-ela" rows="3" maxlength="3000" placeholder="Ex.: Hoje a mãe chega às 15h.">${esc(A.ela?A.ela.texto:"")}</textarea>
+        <div class="conta-linha"><span class="muted small">${A.ela&&A.ela.texto?"Atualizado em "+new Date(A.ela.atualizado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"Sem aviso"}</span><button type="button" class="primary" data-act="salvarAviso" data-para="ela">Salvar aviso para ${esc((e.nome||"ela").split(" ")[0])}</button></div></div>`}
+    </section>
+    <section class="card"><h2>Recados de ${esc(e.nome||"")}</h2>
       <div class="chat">${L===null?'<div class="muted">Carregando…</div>':!L.length?'<div class="muted small">Nenhum recado ainda.</div>':L.map(m=>`<div class="msg ${m.de==="emp"?"eu":"ele"}">${m.categoria!=="recado"?`<span class="cat">${esc(NOME_CAT[m.categoria]||"")}</span>`:""}<div>${esc(m.texto).replace(/\n/g,"<br>")}</div><span class="quando">${m.de==="func"?esc(e.nome||"Ela")+" · ":"Você · "}${new Date(m.criado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${m.de==="emp"&&m.lido_em?" · lido":""}</span></div>`).join("")}</div>
       <form id="form-resposta" class="form-recado"><textarea id="rs-txt" rows="2" maxlength="2000" placeholder="Responder ou deixar uma informação para ela"></textarea><button type="submit" class="primary">Enviar</button></form></section>`;
   }
@@ -1346,12 +1368,14 @@ function viewRotina(){
 async function enviarTarefa(){
   const txt=document.getElementById("tf-txt").value.trim();if(!txt){document.getElementById("tf-txt").focus();return}
   padroesRotina();if(!/^\d{4}-\d{2}-\d{2}$/.test(rot.data)){toast("Escolha o dia da tarefa.");return}
-  const e=S.emps[rot.func]||{};let row={casa_id:nuvem.casa.id,func_id:rot.func,texto:txt};
+  const e=S.emps[rot.func]||{};let row={casa_id:nuvem.casa.id,func_id:rot.func,texto:txt,precisa_foto:document.getElementById("tf-foto").checked,precisa_aprovacao:document.getElementById("tf-apr").checked};
   if(rot.repet==="dia")row.data=rot.data;
   else if(rot.repet==="escala"){if(!(e.dias||[]).length){toast("Defina os dias de trabalho dela em Cadastros.");return}row.dias=e.dias}
   else{const d=[...document.querySelectorAll("[data-tf-dia]:checked")].map(x=>+x.dataset.tfDia);if(!d.length){toast("Escolha pelo menos um dia da semana.");return}row.dias=d}
-  const {error}=await sb.from("tarefas").insert(row);if(error){toast("Não foi possível salvar: "+error.message);return}
-  toast("Tarefa adicionada");carregarRotina();
+  let {error}=await sb.from("tarefas").insert(row);
+  if(error&&/precisa_/.test(error.message||"")){toast("Rode de novo o script supabase/tarefas_fotos.sql no Supabase para usar as opções de foto e aprovação.");return}
+  if(error){toast("Não foi possível salvar: "+error.message);return}
+  rot.tfFoto=true;rot.tfApr=true;toast("Tarefa adicionada");carregarRotina();
 }
 
 /* ---------- Conclusão de tarefa com hora e foto (funcionária) ---------- */
@@ -1378,24 +1402,24 @@ function abrirConclusao(t){
     d.innerHTML=`<form class="modal" id="cc-form" novalidate><h2 id="cc-t">Concluir tarefa</h2>
       <div class="modal-corpo"><p><b>${esc(t.texto)}</b>${t.atrasada?`<br><span class="atraso-txt">Atrasada desde ${fmtDiaCurto(t.atrasada_desde||t.data)}</span>`:""}</p>
         <div class="field"><label for="cc-hora">Que horas você terminou?</label><input type="time" id="cc-hora" value="${hh}" max="${hh}" required></div>
-        <div class="field"><span class="label" style="text-transform:none;letter-spacing:0;font-size:.82rem">Foto da tarefa pronta</span>
+        <div class="field"><span class="label" style="text-transform:none;letter-spacing:0;font-size:.82rem">Foto da tarefa pronta${t.precisa_foto===false?" (opcional)":""}</span>
           <label class="btnlike foto-btn" for="cc-foto">📷 Tirar ou escolher foto</label><input type="file" id="cc-foto" accept="image/*" capture="environment" hidden>
           <img id="cc-prev" class="foto-prev" alt="Prévia da foto" hidden></div>
         <div id="cc-msg" class="small cpf-msg" role="status"></div></div>
-      <div class="modal-acoes"><button type="button" data-r="0">Cancelar</button><button type="submit" class="primary" id="cc-ok" disabled>Concluir</button></div></form>`;
+      <div class="modal-acoes"><button type="button" data-r="0">Cancelar</button><button type="submit" class="primary" id="cc-ok" ${t.precisa_foto===false?"":"disabled"}>Concluir</button></div></form>`;
     let foto=null;const $=s=>d.querySelector(s);
     const fim=v=>{d.remove();res(v)};
     d.addEventListener("click",ev=>{if(ev.target.closest('[data-r="0"]')||ev.target===d)fim(false)});
     $("#cc-foto").addEventListener("change",async ev=>{const f=ev.target.files[0];if(!f)return;$("#cc-msg").textContent="Preparando a foto…";
       try{foto=await comprimirFoto(f);$("#cc-prev").src=foto.url;$("#cc-prev").hidden=false;$(".foto-btn").textContent="📷 Trocar foto";$("#cc-msg").textContent="";$("#cc-ok").disabled=false}
-      catch(e){foto=null;$("#cc-msg").textContent=e.message;$("#cc-ok").disabled=true}});
+      catch(e){foto=null;$("#cc-msg").textContent=e.message;$("#cc-ok").disabled=t.precisa_foto!==false}});
     $("#cc-form").addEventListener("submit",async ev=>{ev.preventDefault();const hora=$("#cc-hora").value;
       if(!hora){$("#cc-msg").textContent="Informe o horário em que terminou.";return}
       const a=new Date();const lim=`${String(a.getHours()).padStart(2,"0")}:${String(a.getMinutes()).padStart(2,"0")}`;
       if(hora>lim){$("#cc-msg").textContent="O horário informado ainda não chegou. Confira a hora.";return}
-      if(!foto){$("#cc-msg").textContent="Tire ou escolha a foto da tarefa pronta.";return}
+      if(!foto&&t.precisa_foto!==false){$("#cc-msg").textContent="Tire ou escolha a foto da tarefa pronta.";return}
       const ok=$("#cc-ok");ok.disabled=true;ok.textContent="Enviando…";$("#cc-msg").textContent="";
-      try{await apiRotina({acao:"concluir_tarefa",sessao:funcSessao,tarefa_id:t.id,data:t.data,hora,foto_base64:foto.base64,foto_tipo:"image/jpeg"});fim(true)}
+      try{await apiRotina({acao:"concluir_tarefa",sessao:funcSessao,tarefa_id:t.id,data:t.data,hora,foto_base64:foto?foto.base64:undefined,foto_tipo:"image/jpeg"});fim(true)}
       catch(e){if(e.sessao){fim(false);sairFunc("Sua sessão terminou. Entre de novo.");return}$("#cc-msg").textContent=e.message;ok.disabled=false;ok.textContent="Concluir"}});
     document.body.appendChild(d);$("#cc-hora").focus();
   });
@@ -1417,7 +1441,7 @@ async function carregarPainel(){
   const n=+pnl.periodo;const dias=diasPeriodo(Math.max(n,8));const ini=dias[0],hoje=dias[dias.length-1];
   try{
     const [tq,pq]=await Promise.all([
-      sb.from("tarefas").select("id,func_id,texto,data,dias,ativa,criado_em,desativada_em").eq("casa_id",c),
+      sb.from("tarefas").select("*").eq("casa_id",c),
       sb.from("registros_ponto").select("func_id,momento,tipo,origem,desconsiderado").eq("casa_id",c).gte("momento",new Date(ini+"T00:00:00").toISOString())]);
     if(tq.error)throw tq.error;
     const tarefas=tq.data||[];let feitas=[];
@@ -1457,7 +1481,7 @@ function viewPainel(){
   const lim7=new Set(D.dias.slice(-8,-1));const feitaDepois=(tid,dk)=>D.feitas.some(f=>f.tarefa_id===tid&&f.data>=dk&&f.revisao!=="refazer");
   const grp={};oc.filter(o=>!o.hoje&&o.aberta&&lim7.has(o.data)&&D.trabalhou[o.t.func_id+"|"+o.data]&&!feitaDepois(o.t.id,o.data)).forEach(o=>{const g=grp[o.t.id]=grp[o.t.id]||{t:o.t,desde:o.data,ultima:o.data,n:0};g.n++;if(o.data<g.desde)g.desde=o.data;if(o.data>g.ultima)g.ultima=o.data});
   const atrasadas=Object.values(grp).map(g=>({...g,valeHoje:aplicaNoDia(g.t,D.hoje)}));
-  const revisar=oc.filter(o=>o.feita&&o.f&&!o.f.revisao);
+  const revisar=oc.filter(o=>o.feita&&o.f&&!o.f.revisao&&o.t.precisa_aprovacao!==false);
   const comAtraso=feitas.filter(o=>o.atrasoFeito).length;
   // Ponto agora: situação de cada funcionária hoje
   const empsP=empList().filter(e=>(!pnl.func||e.id===pnl.func)&&ativaNoMes(e,new Date().getFullYear(),new Date().getMonth()));
@@ -2218,6 +2242,7 @@ view.addEventListener("change",ev=>{
   {const t=ev.target;
    if(t.dataset.tarefa){const id=t.dataset.tarefa,feita=t.checked;t.disabled=true;
      rpcFunc("marcar_tarefa",{p_tarefa:id,p_feita:feita}).then(()=>carregarAbaFunc("tarefas")).catch(e=>{t.checked=!feita;t.disabled=false;tratarErroFunc(e)});return}
+   if(t.dataset.rotCk){rot[t.dataset.rotCk]=t.checked;return}
    if(t.dataset.pnl){pnl[t.dataset.pnl]=t.value;if(t.dataset.pnl==="periodo"){pnl.dados=null;render();carregarPainel()}else render();return}
    if(t.dataset.rot){const k=t.dataset.rot;rot[k]=t.value;if(k!=="repet"){rot.tarefas=rot.ponto=rot.recados=null;render();carregarRotina()}else render();return}
    if(t.dataset.gest){gest[t.dataset.gest]=t.value;render();return}
@@ -2259,6 +2284,12 @@ view.addEventListener("click",async ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="gerarLote"){gerarLote(b)}
+  else if(a==="salvarAviso"){const para=b.dataset.para,fid=para==="*"?"*":rot.func;const txt=(document.getElementById(para==="*"?"av-todas":"av-ela").value||"").trim();
+    b.disabled=true;const {error}=await sb.from("avisos").upsert({casa_id:nuvem.casa.id,func_id:fid,texto:txt,atualizado_em:new Date().toISOString()});b.disabled=false;
+    if(error){toast("Não foi possível salvar: "+error.message);return}toast(txt?"Aviso salvo":"Aviso apagado");carregarRotina()}
+  else if(a==="tfOpc"){const t=(rot.tarefas||[]).find(x=>x.id===b.dataset.id);if(!t)return;const k=b.dataset.k,v=!(t[k]!==false);
+    const {error}=await sb.from("tarefas").update({[k]:v}).eq("id",t.id);if(error){toast(/precisa_/.test(error.message)?"Rode de novo o script supabase/tarefas_fotos.sql no Supabase.":error.message);return}
+    t[k]=v;render();toast(k==="precisa_foto"?(v?"Foto passa a ser exigida":"Foto passa a ser opcional"):(v?"Passa a precisar da sua aprovação":"Não precisa mais de aprovação"))}
   else if(a==="concluirTarefa"){const t=((funcTarefas&&funcTarefas.tarefas)||[]).find(x=>x.id===b.dataset.id&&x.data===b.dataset.data);if(!t)return;
     if(await abrirConclusao(t)){toast("Tarefa concluída");carregarAbaFunc("tarefas")}}
   else if(a==="desfazerTarefa"){if(!await confirmar("Desfazer a conclusão?","<p>A tarefa volta para a lista de pendentes. Para concluir de novo, será preciso informar a hora e enviar outra foto.</p>","Desfazer","Voltar"))return;

@@ -56,12 +56,17 @@ async function concluir(b) {
   const { sessao, tarefa_id, data, hora, foto_base64, foto_tipo } = b;
   if (!sessao || !tarefa_id || !/^\d{4}-\d{2}-\d{2}$/.test(data || "")) throw new Erro(400, "Dados incompletos.");
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora || "")) throw new Erro(400, "Informe o horário em que terminou.");
-  if (!foto_base64) throw new Erro(400, "Envie a foto da tarefa.");
+  const info = await rpc("tarefa_da_sessao", { p_token: sessao, p_tarefa: tarefa_id, p_data: data });
+  // Sem foto: só se a tarefa não exige (o banco confere de novo ao registrar)
+  if (!foto_base64) {
+    if (info.precisa_foto !== false) throw new Erro(400, "Envie a foto da tarefa.");
+    await rpc("concluir_tarefa", { p_token: sessao, p_tarefa: tarefa_id, p_data: data, p_hora: hora, p_foto: null });
+    return { ok: true };
+  }
   const tipo = ["image/jpeg", "image/png", "image/webp"].includes(foto_tipo) ? foto_tipo : "image/jpeg";
   const bytes = Buffer.from(foto_base64, "base64");
   if (bytes.length < 1000) throw new Erro(400, "A foto não chegou inteira. Tente de novo.");
   if (bytes.length > 3 * 1024 * 1024) throw new Erro(413, "Foto grande demais. Tente de novo.");
-  const info = await rpc("tarefa_da_sessao", { p_token: sessao, p_tarefa: tarefa_id, p_data: data });
   const ext = tipo === "image/png" ? "png" : tipo === "image/webp" ? "webp" : "jpg";
   const caminho = `${info.casa_id}/${encodeURIComponent(info.func_id)}/${info.data}/${tarefa_id}-${Date.now()}.${ext}`;
   await guardarFoto(caminho, bytes, tipo);
