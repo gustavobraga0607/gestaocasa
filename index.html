@@ -173,6 +173,36 @@ section.card.editando{border-color:var(--accent);box-shadow:0 0 0 1px var(--acce
 section.card.travado .emp-campos input:disabled,section.card.travado .emp-campos select:disabled{opacity:1;background:var(--sunken);color:var(--fg);cursor:default}
 section.card.travado .days label{cursor:default}
 .emp-msg:empty{display:none}
+.tarefa2{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px}
+.tarefa2-txt{display:flex;flex-direction:column;gap:2px;min-width:0}.tarefa2-tit{font-size:1rem}
+.tarefa2.feita,.tarefa2.aprovada{background:var(--good-soft);border-color:transparent}
+.tarefa2.atrasada,.tarefa2.refazer{border-color:var(--bad);border-left-width:4px;background:color-mix(in srgb,var(--bad) 6%,var(--surface))}
+.atraso-txt{color:var(--bad);font-size:.85rem;font-weight:600}
+.atrasadas-card{border-color:var(--bad)}.atrasadas-card h2{color:var(--bad)}
+.foto-btn{display:block;text-align:center;padding:12px}
+.foto-prev{max-width:100%;max-height:240px;border-radius:10px;object-fit:cover;margin-top:6px}
+.pnl-filtros{align-items:end}
+.pnl-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.kpi-ruim .v{color:var(--bad)}.kpi-atencao .v{color:var(--warn)}
+.barras{display:flex;align-items:flex-end;gap:4px;height:170px;padding:8px 0 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.barra-col{flex:1 0 18px;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;position:relative;outline:none}
+.barra-trilho{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;background:repeating-linear-gradient(to top,transparent 0 calc(25% - 1px),var(--line) calc(25% - 1px) 25%)}
+.barra{width:min(70%,26px);background:var(--accent);border-radius:4px 4px 0 0}
+.barra-x{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.barra-col:hover::after,.barra-col:focus::after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:4px 8px;border-radius:6px;font-size:.75rem;white-space:nowrap;z-index:2;pointer-events:none}
+.barra-col:hover .barra,.barra-col:focus .barra{filter:brightness(1.15)}
+.prog{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.prog-trilho{height:10px;border-radius:99px;background:var(--sunken);overflow:hidden}.prog-barra{height:100%;background:var(--accent);border-radius:99px}
+.fotos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.foto-card{border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:var(--surface)}
+.foto-thumb{padding:0;border:none;border-radius:0;aspect-ratio:4/3;max-width:100%;width:100%;background:var(--sunken);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.85rem}
+.foto-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.foto-info{padding:10px;display:flex;flex-direction:column;gap:4px}
+.foto-acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.foto-acoes button{padding:6px 10px;min-height:0;font-size:.85rem}
+.foto-modal{max-width:720px}.foto-modal img{width:100%;border-radius:10px;max-height:70vh;object-fit:contain}
+.pnl-duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.lista-simples{list-style:none;margin:0;padding:0}.lista-simples li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.atrasada-li span:first-child{color:var(--bad);font-weight:600}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -1098,11 +1128,22 @@ function abasFunc(){
 function viewFuncTarefas(){
   const d=funcTarefas;if(!d)return `<section class="card"><div class="muted">Carregando tarefas…</div></section>`;
   if(d.erro)return `<section class="card"><div class="muted">${esc(d.erro)}</div></section>`;
-  const L=d.tarefas||[];const feitas=L.filter(t=>t.feita_em).length;
+  const L=d.tarefas||[];const atr=L.filter(t=>t.atrasada&&!t.feita_em),hoje=L.filter(t=>!atr.includes(t));
+  const feitas=hoje.filter(t=>t.feita_em).length;
   const dt=new Date(d.data+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
-  if(!L.length)return `<section class="card"><h2>Tarefas de hoje</h2><div class="muted small">${esc(dt)}</div><div class="muted">Nenhuma tarefa para hoje.</div></section>`;
-  return `<section class="card"><div class="conta-linha"><div><h2>Tarefas de hoje</h2><div class="muted small">${esc(dt)}</div></div><span class="chip ${feitas===L.length?"ok-chip":"informal"}">${feitas} de ${L.length} feitas</span></div>
-    <ul class="tarefas">${L.map(t=>`<li><label class="tarefa ${t.feita_em?"feita":""}"><input type="checkbox" data-tarefa="${t.id}" ${t.feita_em?"checked":""}><span>${esc(t.texto)}${t.feita_em?`<span class="muted small"> · feita às ${hhmm(t.feita_em)}</span>`:""}</span></label></li>`).join("")}</ul></section>`;
+  const item=t=>{
+    const estado=t.feita_em?(t.aprovada?"aprovada":"feita"):t.refazer?"refazer":t.atrasada?"atrasada":"pendente";
+    return `<li class="tarefa2 ${estado}"><div class="tarefa2-txt"><span class="tarefa2-tit">${t.feita_em?"✓ ":""}${esc(t.texto)}</span>
+      ${t.atrasada&&!t.feita_em?`<span class="atraso-txt">Atrasada desde ${fmtDiaCurto(t.atrasada_desde||t.data)}${t.dias_atraso>1?` · ${t.dias_atraso} dias sem fazer`:""}${t.data===d.data?" · vale também para hoje":""}</span>`:""}
+      ${t.refazer?`<span class="atraso-txt">Refazer: ${esc(t.obs||"")}</span>`:""}
+      ${t.feita_em?`<span class="muted small">Concluída às ${esc(t.hora_informada||hhmm(t.feita_em))}${t.com_foto?" · 📷 foto enviada":""}${t.aprovada?" · aprovada pelo empregador":""}</span>`:""}</div>
+      ${t.feita_em?(t.aprovada||t.atrasada?"":`<button type="button" class="ghost small" data-act="desfazerTarefa" data-id="${t.id}">Desfazer</button>`)
+        :`<button type="button" class="primary" data-act="concluirTarefa" data-id="${t.id}" data-data="${t.data}">${t.refazer?"Refazer":"Concluir"}</button>`}</li>`};
+  let h="";
+  if(atr.length)h+=`<section class="card atrasadas-card"><h2>Atrasadas</h2><div class="small">Tarefas que ficaram sem fazer em dias anteriores. Faça o quanto antes.</div><ul class="tarefas">${atr.map(item).join("")}</ul></section>`;
+  h+=`<section class="card"><div class="conta-linha"><div><h2>Tarefas de hoje</h2><div class="muted small">${esc(dt)}</div></div>${hoje.length?`<span class="chip ${feitas===hoje.length?"ok-chip":"informal"}">${feitas} de ${hoje.length} feitas</span>`:""}</div>
+    ${hoje.length?`<ul class="tarefas">${hoje.map(item).join("")}</ul><div class="muted small">Para concluir, informe a hora em que terminou e tire uma foto da tarefa pronta.</div>`:`<div class="muted">Nenhuma tarefa para hoje.</div>`}</section>`;
+  return h;
 }
 function viewFuncPonto(){
   const d=funcPonto;if(!d)return `<section class="card"><div class="muted">Carregando ponto…</div></section>`;
@@ -1147,7 +1188,7 @@ async function baterPonto(tipo,b){
 function iniciarRelogio(){clearInterval(relogioTimer);relogioTimer=setInterval(()=>{const el=document.getElementById("relogio");if(el)el.textContent=new Date().toLocaleTimeString("pt-BR");else clearInterval(relogioTimer)},1000)}
 
 /* ===== Lado do empregador: aba Rotina ===== */
-const rot={sub:"tarefas",func:"",data:"",mes:"",tarefas:null,feitas:{},ponto:null,recados:null,naoLidos:{},erro:null,ajuste:false,descId:null,repet:"dia"};
+const rot={sub:"painel",func:"",data:"",mes:"",tarefas:null,feitas:{},ponto:null,recados:null,naoLidos:{},erro:null,ajuste:false,descId:null,repet:"dia"};
 function totalNaoLidos(){return Object.values(rot.naoLidos).reduce((a,b)=>a+b,0)}
 async function carregarNaoLidos(){
   if(!sb||!nuvem)return;const {data,error}=await sb.from("recados").select("func_id").eq("casa_id",nuvem.casa.id).eq("de","func").is("lido_em",null).limit(500);
@@ -1160,13 +1201,17 @@ function padroesRotina(){
   if(!rot.mes)rot.mes=rot.data.slice(0,7);
 }
 async function carregarRotina(){
-  if(!nuvem)return;const c=nuvem.casa.id;rot.erro=null;padroesRotina();rot.carregando=true;
+  if(!nuvem)return;const c=nuvem.casa.id;rot.erro=null;padroesRotina();
+  if(rot.sub==="painel"){await carregarPainel();return}
+  rot.carregando=true;
   try{
     if(rot.sub==="tarefas"&&rot.func){
       const {data,error}=await sb.from("tarefas").select("*").eq("casa_id",c).eq("func_id",rot.func).eq("ativa",true).order("criado_em");if(error)throw error;
       const dow=new Date(rot.data+"T12:00:00").getDay();
       rot.tarefas=(data||[]).filter(t=>t.data===rot.data||(!t.data&&(t.dias||[]).includes(dow)));
-      rot.feitas={};if(rot.tarefas.length){const r=await sb.from("tarefas_feitas").select("tarefa_id,feita_em").in("tarefa_id",rot.tarefas.map(t=>t.id)).eq("data",rot.data);(r.data||[]).forEach(f=>rot.feitas[f.tarefa_id]=f.feita_em)}
+      rot.feitas={};if(rot.tarefas.length){let r=await sb.from("tarefas_feitas").select("tarefa_id,feita_em,hora_informada,foto,revisao").in("tarefa_id",rot.tarefas.map(t=>t.id)).eq("data",rot.data);
+        if(r.error)r=await sb.from("tarefas_feitas").select("tarefa_id,feita_em").in("tarefa_id",rot.tarefas.map(t=>t.id)).eq("data",rot.data);
+        (r.data||[]).filter(f=>f.revisao!=="refazer").forEach(f=>rot.feitas[f.tarefa_id]=f)}
     }
     if(rot.sub==="ponto"&&rot.func){
       const [y,m]=rot.mes.split("-").map(Number);const ini=new Date(y,m-1,1),fim=new Date(y,m,1);
@@ -1185,20 +1230,21 @@ function viewRotina(){
   if(!nuvem)return `<div class="empty"><div class="muted">Disponível quando os dados estão na nuvem.</div></div>`;
   const emps=empList();if(!emps.length)return `<div class="empty"><div class="muted">Cadastre uma funcionária primeiro.</div></div>`;
   padroesRotina();
-  const pend=rot.sub==="tarefas"?rot.tarefas:rot.sub==="ponto"?rot.ponto:rot.recados;
-  if(pend===null&&!rot.carregando&&!rot.erro)setTimeout(carregarRotina,0);
-  const subs=[["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",totalNaoLidos()]];
+  const pend=rot.sub==="painel"?pnl.dados:rot.sub==="tarefas"?rot.tarefas:rot.sub==="ponto"?rot.ponto:rot.recados;
+  if((pend===null||pend===undefined)&&!rot.carregando&&!pnl.carregando&&!rot.erro)setTimeout(carregarRotina,0);
+  const subs=[["painel","Painel",0],["tarefas","Tarefas",0],["ponto","Ponto",0],["recados","Recados",totalNaoLidos()]];
   let h=`<div style="display:flex;flex-direction:column;gap:14px">
     <div class="conta-linha"><h2>Rotina</h2>
-      <div class="field" style="min-width:200px"><label for="rt-func">Funcionária</label><select id="rt-func" data-rot="func">${emps.map(e=>`<option value="${e.id}" ${rot.func===e.id?"selected":""}>${esc(e.nome||"Sem nome")}${rot.naoLidos[e.id]?` (${rot.naoLidos[e.id]} recado${rot.naoLidos[e.id]>1?"s":""} novo${rot.naoLidos[e.id]>1?"s":""})`:""}</option>`).join("")}</select></div></div>
+      <div class="field" style="min-width:200px" ${rot.sub==="painel"?"hidden":""}><label for="rt-func">Funcionária</label><select id="rt-func" data-rot="func">${emps.map(e=>`<option value="${e.id}" ${rot.func===e.id?"selected":""}>${esc(e.nome||"Sem nome")}${rot.naoLidos[e.id]?` (${rot.naoLidos[e.id]} recado${rot.naoLidos[e.id]>1?"s":""} novo${rot.naoLidos[e.id]>1?"s":""})`:""}</option>`).join("")}</select></div></div>
     <div class="func-abas" role="tablist">${subs.map(([k,l,b])=>`<button type="button" role="tab" data-act="rotSub" data-s="${k}" aria-selected="${rot.sub===k}">${l}${b?` <span class="badge">${b}</span>`:""}</button>`).join("")}</div>`;
+  if(rot.sub==="painel")return h+viewPainel()+`</div>`;
   if(rot.erro)return h+`<div class="banner warn">${esc(rot.erro)}</div></div>`;
   const e=S.emps[rot.func]||{};
   if(rot.sub==="tarefas"){
     const L=rot.tarefas;const dowNome=["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
     h+=`<section class="card"><div class="conta-linha"><h2>Tarefas</h2><div class="field"><label for="rt-data">Dia</label><input type="date" id="rt-data" data-rot="data" value="${rot.data}"></div></div>
       ${L===null?'<div class="muted">Carregando…</div>':!L.length?'<div class="muted">Nenhuma tarefa neste dia.</div>':`<ul class="tarefas adm">${L.map(t=>`<li><span class="${rot.feitas[t.id]?"ok-txt":""}">${rot.feitas[t.id]?"✓ ":"○ "}${esc(t.texto)}</span>
-        <span class="muted small">${t.dias?"repete: "+t.dias.map(d=>dowNome[d].slice(0,3)).join(", "):"só neste dia"}${rot.feitas[t.id]?` · feita às ${hhmm(rot.feitas[t.id])}`:""}</span>
+        <span class="muted small">${t.dias?"repete: "+t.dias.map(d=>dowNome[d].slice(0,3)).join(", "):"só neste dia"}${rot.feitas[t.id]?` · feita às ${rot.feitas[t.id].hora_informada?rot.feitas[t.id].hora_informada.slice(0,5):hhmm(rot.feitas[t.id].feita_em)}${rot.feitas[t.id].foto?" · 📷":""}${rot.feitas[t.id].revisao==="ok"?" · aprovada":""}`:""}</span>
         <button type="button" class="ghost danger" data-act="rmTarefa" data-id="${t.id}" data-rep="${t.dias?1:0}">${t.dias?"Parar de repetir":"Remover"}</button></li>`).join("")}</ul>`}
       <form id="form-tarefa" class="form-tarefa">
         <input type="text" id="tf-txt" maxlength="300" placeholder="Nova tarefa, ex.: Trocar a roupa de cama" aria-label="Nova tarefa">
@@ -1247,6 +1293,151 @@ async function enviarTarefa(){
   const {error}=await sb.from("tarefas").insert(row);if(error){toast("Não foi possível salvar: "+error.message);return}
   toast("Tarefa adicionada");carregarRotina();
 }
+
+/* ---------- Conclusão de tarefa com hora e foto (funcionária) ---------- */
+async function apiRotina(body){
+  const r=await fetch("/api/rotina",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok){const e=new Error(j.erro||("Erro "+r.status));if(r.status===401)e.sessao=true;throw e}
+  return j;
+}
+/* Reduz a foto para no máximo 1280 px e JPEG ~70% (algumas centenas de KB) */
+function comprimirFoto(file){
+  return new Promise((res,rej)=>{
+    const img=new Image();const url=URL.createObjectURL(file);
+    img.onload=()=>{const m=1280,k=Math.min(1,m/Math.max(img.width,img.height));const c=document.createElement("canvas");
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+      c.toBlob(b=>{if(!b)return rej(new Error("Não foi possível ler a foto."));const fr=new FileReader();fr.onload=()=>res({base64:String(fr.result).split(",")[1],url:String(fr.result),tam:b.size});fr.readAsDataURL(b)},"image/jpeg",0.72)};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("Este arquivo não é uma foto válida."))};img.src=url;
+  });
+}
+function abrirConclusao(t){
+  return new Promise(res=>{
+    const agora=new Date(),hh=`${String(agora.getHours()).padStart(2,"0")}:${String(agora.getMinutes()).padStart(2,"0")}`;
+    const d=document.createElement("div");d.className="modal-fundo";d.setAttribute("role","dialog");d.setAttribute("aria-modal","true");d.setAttribute("aria-labelledby","cc-t");
+    d.innerHTML=`<form class="modal" id="cc-form" novalidate><h2 id="cc-t">Concluir tarefa</h2>
+      <div class="modal-corpo"><p><b>${esc(t.texto)}</b>${t.atrasada?`<br><span class="atraso-txt">Atrasada desde ${fmtDiaCurto(t.atrasada_desde||t.data)}</span>`:""}</p>
+        <div class="field"><label for="cc-hora">Que horas você terminou?</label><input type="time" id="cc-hora" value="${hh}" max="${hh}" required></div>
+        <div class="field"><span class="label" style="text-transform:none;letter-spacing:0;font-size:.82rem">Foto da tarefa pronta</span>
+          <label class="btnlike foto-btn" for="cc-foto">📷 Tirar ou escolher foto</label><input type="file" id="cc-foto" accept="image/*" capture="environment" hidden>
+          <img id="cc-prev" class="foto-prev" alt="Prévia da foto" hidden></div>
+        <div id="cc-msg" class="small cpf-msg" role="status"></div></div>
+      <div class="modal-acoes"><button type="button" data-r="0">Cancelar</button><button type="submit" class="primary" id="cc-ok" disabled>Concluir</button></div></form>`;
+    let foto=null;const $=s=>d.querySelector(s);
+    const fim=v=>{d.remove();res(v)};
+    d.addEventListener("click",ev=>{if(ev.target.closest('[data-r="0"]')||ev.target===d)fim(false)});
+    $("#cc-foto").addEventListener("change",async ev=>{const f=ev.target.files[0];if(!f)return;$("#cc-msg").textContent="Preparando a foto…";
+      try{foto=await comprimirFoto(f);$("#cc-prev").src=foto.url;$("#cc-prev").hidden=false;$(".foto-btn").textContent="📷 Trocar foto";$("#cc-msg").textContent="";$("#cc-ok").disabled=false}
+      catch(e){foto=null;$("#cc-msg").textContent=e.message;$("#cc-ok").disabled=true}});
+    $("#cc-form").addEventListener("submit",async ev=>{ev.preventDefault();const hora=$("#cc-hora").value;
+      if(!hora){$("#cc-msg").textContent="Informe o horário em que terminou.";return}
+      const a=new Date();const lim=`${String(a.getHours()).padStart(2,"0")}:${String(a.getMinutes()).padStart(2,"0")}`;
+      if(hora>lim){$("#cc-msg").textContent="O horário informado ainda não chegou. Confira a hora.";return}
+      if(!foto){$("#cc-msg").textContent="Tire ou escolha a foto da tarefa pronta.";return}
+      const ok=$("#cc-ok");ok.disabled=true;ok.textContent="Enviando…";$("#cc-msg").textContent="";
+      try{await apiRotina({acao:"concluir_tarefa",sessao:funcSessao,tarefa_id:t.id,data:t.data,hora,foto_base64:foto.base64,foto_tipo:"image/jpeg"});fim(true)}
+      catch(e){if(e.sessao){fim(false);sairFunc("Sua sessão terminou. Entre de novo.");return}$("#cc-msg").textContent=e.message;ok.disabled=false;ok.textContent="Concluir"}});
+    document.body.appendChild(d);$("#cc-hora").focus();
+  });
+}
+const fmtDiaCurto=k=>k?`${k.slice(8,10)}/${k.slice(5,7)}`:"";
+
+/* ---------- Painel de tarefas (empregador) ---------- */
+const pnl={periodo:"7",func:"",dados:null,carregando:false,urls:{},refazerId:null};
+const chaveOc=(t,d)=>t+"|"+d;
+function diasPeriodo(n){const out=[];const hoje=new Date();for(let i=n-1;i>=0;i--){const d=new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate()-i);out.push(diaLocal(d))}return out}
+function aplicaNoDia(t,dk){
+  const criado=diaLocal(t.criado_em);if(dk<criado)return false;
+  if(!t.ativa&&(!t.desativada_em||diaLocal(t.desativada_em)<=dk))return false;
+  if(t.data)return t.data===dk;
+  return (t.dias||[]).includes(new Date(dk+"T12:00:00").getDay());
+}
+async function carregarPainel(){
+  if(!nuvem)return;pnl.carregando=true;const c=nuvem.casa.id;
+  const n=+pnl.periodo;const dias=diasPeriodo(Math.max(n,8));const ini=dias[0],hoje=dias[dias.length-1];
+  try{
+    const [tq,pq]=await Promise.all([
+      sb.from("tarefas").select("id,func_id,texto,data,dias,ativa,criado_em,desativada_em").eq("casa_id",c),
+      sb.from("registros_ponto").select("func_id,momento,desconsiderado").eq("casa_id",c).gte("momento",new Date(ini+"T00:00:00").toISOString())]);
+    if(tq.error)throw tq.error;
+    const tarefas=tq.data||[];let feitas=[];
+    if(tarefas.length){const fq=await sb.from("tarefas_feitas").select("tarefa_id,data,feita_em,hora_informada,foto,revisao,revisao_obs,revisado_em").in("tarefa_id",tarefas.map(t=>t.id)).gte("data",ini);if(fq.error)throw fq.error;feitas=fq.data||[]}
+    const trabalhou={};(pq.data||[]).filter(r=>!r.desconsiderado).forEach(r=>{trabalhou[r.func_id+"|"+diaLocal(r.momento)]=true});
+    const usaPonto={};(pq.data||[]).forEach(r=>usaPonto[r.func_id]=true);
+    const fmap={};feitas.forEach(f=>fmap[chaveOc(f.tarefa_id,f.data)]=f);
+    // Ocorrências: hoje sempre; dias passados só se ela trabalhou (ou se ela não usa o ponto)
+    const oc=[];
+    for(const dk of dias)for(const t of tarefas){if(!aplicaNoDia(t,dk))continue;
+      const conta=dk===hoje||trabalhou[t.func_id+"|"+dk]||!usaPonto[t.func_id];if(!conta)continue;
+      const f=fmap[chaveOc(t.id,dk)];const feita=f&&f.revisao!=="refazer";
+      oc.push({t,data:dk,f,feita,hoje:dk===hoje,atrasoFeito:feita&&diaLocal(f.feita_em)>dk,aberta:!feita});}
+    pnl.dados={oc,dias,hoje,tarefas,feitas,trabalhou};pnl.urls={};
+    // Fotos para revisão: links temporários
+    const fotos=feitas.filter(f=>f.foto).map(f=>f.foto);
+    if(fotos.length){const {data}=await sb.storage.from("tarefas").createSignedUrls(fotos.slice(0,200),3600);(data||[]).forEach(x=>{if(x.signedUrl)pnl.urls[x.path]=x.signedUrl})}
+  }catch(e){pnl.dados={erro:/does not exist|Could not find|PGRST20|column/.test((e.code||"")+(e.message||""))?"Para usar o painel com fotos, rode o script supabase/tarefas_fotos.sql no Supabase.":(e.message||"Erro ao carregar")}}
+  pnl.carregando=false;if(tab==="rotina"&&rot.sub==="painel"&&!appHasFocus())render();
+}
+function viewPainel(){
+  const D=pnl.dados;
+  let h=`<div class="grid-form pnl-filtros">
+      <div class="field"><label for="pn-per">Período</label><select id="pn-per" data-pnl="periodo"><option value="1" ${pnl.periodo==="1"?"selected":""}>Hoje</option><option value="7" ${pnl.periodo==="7"?"selected":""}>Últimos 7 dias</option><option value="14" ${pnl.periodo==="14"?"selected":""}>Últimos 14 dias</option><option value="30" ${pnl.periodo==="30"?"selected":""}>Últimos 30 dias</option></select></div>
+      <div class="field"><label for="pn-func">Funcionária</label><select id="pn-func" data-pnl="func"><option value="">Todas</option>${empList().map(e=>`<option value="${e.id}" ${pnl.func===e.id?"selected":""}>${esc(e.nome||"")}</option>`).join("")}</select></div>
+      <div class="field" style="justify-content:flex-end"><button type="button" data-act="pnlAtualizar">Atualizar</button></div></div>`;
+  if(!D)return h+`<div class="muted">Carregando painel…</div>`;
+  if(D.erro)return h+`<div class="banner warn">${esc(D.erro)}</div>`;
+  const nome=id=>{const e=S.emps[id];return e&&e.nome?e.nome:"Funcionária removida"};
+  const dias=D.dias.slice(-(+pnl.periodo));const noPer=new Set(dias);
+  const oc=D.oc.filter(o=>(!pnl.func||o.t.func_id===pnl.func));
+  const per=oc.filter(o=>noPer.has(o.data));
+  const feitas=per.filter(o=>o.feita),pct=per.length?Math.round(feitas.length/per.length*100):0;
+  const hoje=oc.filter(o=>o.hoje),hojeFeitas=hoje.filter(o=>o.feita).length;
+  // Atrasos agrupados por tarefa: dias dos últimos 7 sem conclusão e sem conclusão posterior (uma conclusão depois resolve)
+  const lim7=new Set(D.dias.slice(-8,-1));const feitaDepois=(tid,dk)=>D.feitas.some(f=>f.tarefa_id===tid&&f.data>=dk&&f.revisao!=="refazer");
+  const grp={};oc.filter(o=>!o.hoje&&o.aberta&&lim7.has(o.data)&&D.trabalhou[o.t.func_id+"|"+o.data]&&!feitaDepois(o.t.id,o.data)).forEach(o=>{const g=grp[o.t.id]=grp[o.t.id]||{t:o.t,desde:o.data,ultima:o.data,n:0};g.n++;if(o.data<g.desde)g.desde=o.data;if(o.data>g.ultima)g.ultima=o.data});
+  const atrasadas=Object.values(grp).map(g=>({...g,valeHoje:aplicaNoDia(g.t,D.hoje)}));
+  const revisar=oc.filter(o=>o.feita&&o.f&&!o.f.revisao);
+  const comAtraso=feitas.filter(o=>o.atrasoFeito).length;
+  h+=`<div class="pnl-kpis">
+    <div class="tile"><span class="label">Concluídas no período</span><span class="v num">${pct}%</span><span class="muted small">${feitas.length} de ${per.length} tarefas${comAtraso?` · ${comAtraso} com atraso`:""}</span></div>
+    <div class="tile"><span class="label">Hoje</span><span class="v num">${hojeFeitas}/${hoje.length}</span><span class="muted small">${hoje.length-hojeFeitas} pendente(s)</span></div>
+    <div class="tile ${atrasadas.length?"kpi-ruim":""}"><span class="label">Atrasadas</span><span class="v num">${atrasadas.length}</span><span class="muted small">tarefa(s) com dias sem fazer</span></div>
+    <div class="tile ${revisar.length?"kpi-atencao":""}"><span class="label">Aguardando sua revisão</span><span class="v num">${revisar.length}</span><span class="muted small">concluídas com foto</span></div></div>`;
+  // Gráfico: % concluída por dia (uma série)
+  if(dias.length>1){
+    const porDia=dias.map(dk=>{const L=oc.filter(o=>o.data===dk);const f=L.filter(o=>o.feita).length;return {dk,tot:L.length,f,p:L.length?Math.round(f/L.length*100):null}});
+    h+=`<section class="card"><h2>Tarefas concluídas por dia</h2><div class="muted small">Percentual das tarefas de cada dia que foram concluídas (dias sem tarefas ficam em branco).</div>
+      <div class="barras" role="img" aria-label="Percentual de tarefas concluídas por dia">${porDia.map(x=>`<div class="barra-col" tabindex="0" data-tip="${fmtDiaCurto(x.dk)}: ${x.p==null?"sem tarefas":`${x.p}% (${x.f} de ${x.tot})`}">
+        <div class="barra-trilho">${x.p==null?"":`<div class="barra" style="height:${Math.max(x.p,2)}%"></div>`}</div><span class="barra-x">${fmtDiaCurto(x.dk).slice(0,2)}</span></div>`).join("")}</div>
+      <details class="small"><summary>Ver em tabela</summary><table class="list"><thead><tr><th>Dia</th><th>Concluídas</th><th>%</th></tr></thead><tbody>${porDia.map(x=>`<tr><td>${fmtDiaCurto(x.dk)}</td><td class="num">${x.f}/${x.tot}</td><td class="num">${x.p==null?"—":x.p+"%"}</td></tr>`).join("")}</tbody></table></details></section>`;
+  }
+  // Progresso de hoje por funcionária
+  const funcsHoje=[...new Set(hoje.map(o=>o.t.func_id))];
+  if(funcsHoje.length)h+=`<section class="card"><h2>Progresso de hoje</h2>${funcsHoje.map(id=>{const L=hoje.filter(o=>o.t.func_id===id),f=L.filter(o=>o.feita).length,p=Math.round(f/L.length*100);
+      return `<div class="prog"><div class="conta-linha"><span>${esc(nome(id))}</span><span class="num small">${f} de ${L.length}</span></div><div class="prog-trilho"><div class="prog-barra" style="width:${p}%"></div></div></div>`}).join("")}</section>`;
+  // Revisão com fotos
+  h+=`<section class="card"><div class="conta-linha"><h2>Para revisar</h2><span class="muted small">${revisar.length} tarefa(s)</span></div>`;
+  h+=!revisar.length?`<div class="muted">Nenhuma tarefa aguardando revisão.</div>`:`<div class="fotos-grid">${revisar.sort((a,b)=>new Date(b.f.feita_em)-new Date(a.f.feita_em)).map(o=>{const url=pnl.urls[o.f.foto];const id=chaveOc(o.t.id,o.data);
+      return `<article class="foto-card">${url?`<button type="button" class="foto-thumb" data-act="verFoto" data-url="${esc(url)}" aria-label="Ampliar foto"><img src="${esc(url)}" alt="Foto: ${esc(o.t.texto)}" loading="lazy"></button>`:`<div class="foto-thumb sem">sem foto</div>`}
+        <div class="foto-info"><b>${esc(o.t.texto)}</b><span class="muted small">${esc(nome(o.t.func_id))} · ${fmtDiaCurto(o.data)}</span>
+        <span class="small">Terminou às <b class="num">${(o.f.hora_informada||"").slice(0,5)}</b> · enviada ${new Date(o.f.feita_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+        ${o.atrasoFeito?`<span class="chip informal" style="margin-left:0;align-self:flex-start">feita com atraso</span>`:""}
+        ${pnl.refazerId===id?`<div class="desc-form"><input type="text" id="rf-obs" placeholder="O que precisa refazer?" maxlength="200"><button type="button" class="danger" data-act="pnlRefazerOk" data-t="${o.t.id}" data-d="${o.data}">Enviar</button><button type="button" data-act="pnlRefazerCancela">Cancelar</button></div>`
+          :`<div class="foto-acoes"><button type="button" class="primary" data-act="pnlAprovar" data-t="${o.t.id}" data-d="${o.data}">Aprovar</button><button type="button" data-act="pnlRefazer" data-id="${id}">Pedir para refazer</button></div>`}</div></article>`}).join("")}</div>`;
+  h+=`</section>`;
+  // Atrasadas e pendentes de hoje
+  const pend=hoje.filter(o=>!o.feita);
+  h+=`<div class="pnl-duas">
+    <section class="card"><h2>Atrasadas</h2>${atrasadas.length?`<ul class="lista-simples">${atrasadas.sort((a,b)=>a.desde<b.desde?-1:1).map(g=>`<li class="atrasada-li"><span>${esc(g.t.texto)}</span><span class="small">${esc(nome(g.t.func_id))} · atrasada desde ${fmtDiaCurto(g.desde)} · ${g.n} dia(s) sem fazer${g.valeHoje?" · vale também para hoje":""}${g.t.dias?" · repetida":""}</span></li>`).join("")}</ul>`:`<div class="muted">Nenhuma tarefa atrasada.</div>`}</section>
+    <section class="card"><h2>Pendentes hoje</h2>${pend.length?`<ul class="lista-simples">${pend.map(o=>{const g=grp[o.t.id];return `<li class="${g?"atrasada-li":""}"><span>${esc(o.t.texto)}</span><span class="small ${g?"":"muted"}">${esc(nome(o.t.func_id))}${g?` · atrasada desde ${fmtDiaCurto(g.desde)}`:""}${o.f&&o.f.revisao==="refazer"?" · refazer":""}</span></li>`}).join("")}</ul>`:`<div class="muted">Tudo feito hoje.</div>`}</section></div>`;
+  // Tarefas que mais ficam sem fazer
+  const naoFeitas={};per.filter(o=>!o.feita&&!o.hoje).forEach(o=>{const k=o.t.id;naoFeitas[k]=naoFeitas[k]||{t:o.t,n:0};naoFeitas[k].n++});
+  const top=Object.values(naoFeitas).sort((a,b)=>b.n-a.n).slice(0,5);
+  if(top.length)h+=`<section class="card"><h2>Tarefas que mais ficam sem fazer</h2><ul class="lista-simples">${top.map(x=>`<li><span>${esc(x.t.texto)}</span><span class="small muted">${esc(nome(x.t.func_id))} · ${x.n} dia(s)</span></li>`).join("")}</ul></section>`;
+  return h;
+}
+function verFoto(url){const d=document.createElement("div");d.className="modal-fundo";d.innerHTML=`<div class="modal foto-modal"><img src="${esc(url)}" alt="Foto da tarefa"><div class="modal-acoes"><button type="button" class="primary">Fechar</button></div></div>`;
+  d.addEventListener("click",ev=>{if(ev.target===d||ev.target.closest("button"))d.remove()});document.body.appendChild(d)}
 
 async function start(){
   render();
@@ -1905,7 +2096,7 @@ function viewRegras(){
 
 /* ---------- Eventos ---------- */
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200)}
-document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});if(tab==="rotina"){rot.tarefas=rot.ponto=rot.recados=null;carregarRotina()}try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
+document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-tab]");if(!b)return;tab=b.dataset.tab;if(tab==="recibos")lote.prev=null;if(tab==="assin")sincronizarAssinaturas(true).then(()=>{if(tab==="assin"&&!appHasFocus())render()});if(tab==="rotina"){rot.tarefas=rot.ponto=rot.recados=null;pnl.dados=null;carregarRotina()}try{localStorage.setItem("folha-tab",tab)}catch(_){}render()});
 document.getElementById("btn-sair").onclick=()=>sairEmpregador(true);
 document.getElementById("prev").onclick=()=>{ym.m--;if(ym.m<0){ym.m=11;ym.y--}subscribeMes()};
 document.getElementById("next").onclick=()=>{ym.m++;if(ym.m>11){ym.m=0;ym.y++}subscribeMes()};
@@ -1953,6 +2144,7 @@ view.addEventListener("change",ev=>{
   {const t=ev.target;
    if(t.dataset.tarefa){const id=t.dataset.tarefa,feita=t.checked;t.disabled=true;
      rpcFunc("marcar_tarefa",{p_tarefa:id,p_feita:feita}).then(()=>carregarAbaFunc("tarefas")).catch(e=>{t.checked=!feita;t.disabled=false;tratarErroFunc(e)});return}
+   if(t.dataset.pnl){pnl[t.dataset.pnl]=t.value;if(t.dataset.pnl==="periodo"){pnl.dados=null;render();carregarPainel()}else render();return}
    if(t.dataset.rot){const k=t.dataset.rot;rot[k]=t.value;if(k!=="repet"){rot.tarefas=rot.ponto=rot.recados=null;render();carregarRotina()}else render();return}
    if(t.dataset.gest){gest[t.dataset.gest]=t.value;render();return}
    if(t.dataset.docFile){lerPDF(t.dataset.docFile,t.files[0]);return}
@@ -1993,11 +2185,22 @@ view.addEventListener("click",async ev=>{
   else if(a==="del"){delEmp(b.dataset.id)}
   else if(a==="recibo"){recibo(b.dataset.id)}
   else if(a==="gerarLote"){gerarLote(b)}
+  else if(a==="concluirTarefa"){const t=((funcTarefas&&funcTarefas.tarefas)||[]).find(x=>x.id===b.dataset.id&&x.data===b.dataset.data);if(!t)return;
+    if(await abrirConclusao(t)){toast("Tarefa concluída");carregarAbaFunc("tarefas")}}
+  else if(a==="desfazerTarefa"){if(!await confirmar("Desfazer a conclusão?","<p>A tarefa volta para a lista de pendentes. Para concluir de novo, será preciso informar a hora e enviar outra foto.</p>","Desfazer","Voltar"))return;
+    try{await rpcFunc("marcar_tarefa",{p_tarefa:b.dataset.id,p_feita:false});carregarAbaFunc("tarefas")}catch(e){tratarErroFunc(e)}}
+  else if(a==="verFoto"){verFoto(b.dataset.url)}
+  else if(a==="pnlAtualizar"){pnl.dados=null;render();carregarPainel()}
+  else if(a==="pnlAprovar"){b.disabled=true;const {error}=await sb.rpc("revisar_tarefa",{p_casa:nuvem.casa.id,p_tarefa:b.dataset.t,p_data:b.dataset.d,p_status:"ok",p_obs:null});if(error){toast(error.message);b.disabled=false;return}toast("Tarefa aprovada");carregarPainel()}
+  else if(a==="pnlRefazer"){pnl.refazerId=b.dataset.id;render();const el=document.getElementById("rf-obs");if(el)el.focus()}
+  else if(a==="pnlRefazerCancela"){pnl.refazerId=null;render()}
+  else if(a==="pnlRefazerOk"){const obs=(document.getElementById("rf-obs").value||"").trim();if(obs.length<3){toast("Escreva o que precisa ser refeito.");return}
+    const {error}=await sb.rpc("revisar_tarefa",{p_casa:nuvem.casa.id,p_tarefa:b.dataset.t,p_data:b.dataset.d,p_status:"refazer",p_obs:obs});if(error){toast(error.message);return}pnl.refazerId=null;toast("Pedido de refazer enviado");carregarPainel()}
   else if(a==="funcTab"){funcTab=b.dataset.t;render();if(funcTab!=="recibos")carregarAbaFunc(funcTab);else carregarFunc(false)}
   else if(a==="baterPonto"){baterPonto(b.dataset.tipo,b)}
-  else if(a==="rotSub"){rot.sub=b.dataset.s;rot.tarefas=rot.ponto=rot.recados=null;rot.ajuste=false;rot.descId=null;render();carregarRotina()}
+  else if(a==="rotSub"){rot.sub=b.dataset.s;rot.tarefas=rot.ponto=rot.recados=null;if(rot.sub==="painel")pnl.dados=null;rot.ajuste=false;rot.descId=null;render();carregarRotina()}
   else if(a==="rmTarefa"){const rep=b.dataset.rep==="1";const ok=await confirmar(rep?"Parar de repetir esta tarefa?":"Remover esta tarefa?",rep?"<p>Ela deixa de aparecer nos próximos dias. O histórico de quando foi feita continua guardado.</p>":"<p>A tarefa some da lista deste dia.</p>",rep?"Parar de repetir":"Remover");if(!ok)return;
-    const q=rep?sb.from("tarefas").update({ativa:false}).eq("id",b.dataset.id):sb.from("tarefas").delete().eq("id",b.dataset.id);const {error}=await q;if(error){toast(error.message);return}carregarRotina()}
+    const q=rep?sb.from("tarefas").update({ativa:false,desativada_em:new Date().toISOString()}).eq("id",b.dataset.id):sb.from("tarefas").delete().eq("id",b.dataset.id);const {error}=await q;if(error){toast(error.message);return}carregarRotina()}
   else if(a==="ajusteAbre"){rot.ajuste=true;render()}
   else if(a==="ajusteCancela"){rot.ajuste=false;render()}
   else if(a==="descPonto"){rot.descId=b.dataset.id;render();const el=document.getElementById("desc-mot");if(el)el.focus()}
