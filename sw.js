@@ -1,7 +1,7 @@
 // Folha da Casa: funciona sem internet depois da primeira visita.
 // Página: busca na rede primeiro (para receber atualizações) e usa o cache se estiver offline.
 // Demais arquivos (ícones, fontes, gerador de PDF): cache primeiro, atualizando em segundo plano.
-const CACHE = "folha-da-casa-da7f1c85df";
+const CACHE = "folha-da-casa-e5a1c6332d";
 const ESSENCIAIS = [
   "/",
   "/manifest.webmanifest",

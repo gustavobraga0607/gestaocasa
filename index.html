@@ -167,6 +167,12 @@ header.top>div:first-child{flex:1 1 320px;min-width:0}
 @media (max-width:640px){.conta-topo #conta-email{display:none}.conta-topo button{padding:6px 10px;min-height:36px}
   header.top{gap:8px}header.top>div:first-child{flex:1 1 auto}header.top h1{white-space:nowrap;font-size:1.05rem}
   .monthbar .iconbtn{width:32px}.monthbar .m{font-size:.9rem}}
+.emp-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.emp-botoes{display:flex;gap:6px;flex-wrap:wrap}
+section.card.editando{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+section.card.travado .emp-campos input:disabled,section.card.travado .emp-campos select:disabled{opacity:1;background:var(--sunken);color:var(--fg);cursor:default}
+section.card.travado .days label{cursor:default}
+.emp-msg:empty{display:none}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -1276,7 +1282,7 @@ function render(){
   if(mode==="login"){v.innerHTML=viewLogin();const f=document.getElementById(loginTipo==="funcionaria"?"lf-cpf":loginModo==="nova"?"lg-senha":"lg-email");if(f&&!loginEmail)f.focus();return}
   if(mode==="loading"||!S.empsLoaded){v.innerHTML=`<div class="empty"><div class="muted">Carregando suas regras…</div></div>`;return}
   if(tab==="mes"){v.innerHTML=viewMes();if(nuvem)sincronizarAssinaturas()}
-  else if(tab==="func")v.innerHTML=viewFunc();
+  else if(tab==="func"){v.innerHTML=viewFunc();v.querySelectorAll("section.card.travado .emp-campos").forEach(c=>c.querySelectorAll("input,select,textarea").forEach(x=>x.disabled=true))}
   else if(tab==="assin"){v.innerHTML=viewAssinaturas()}
   else if(tab==="rotina"){v.innerHTML=viewRotina()}
   else if(tab==="recibos"){v.innerHTML=viewRecibos();if(!lote.prev&&!lote.carregando)atualizarPrevLote()}
@@ -1780,6 +1786,7 @@ function recibo(id){
   box.innerHTML=`<div class="field" style="margin-top:12px"><label for="rt-${id}">Recibo (copie e envie ou imprima)</label><textarea class="recibo" id="rt-${id}" readonly>${esc(t)}</textarea></div><div class="actions"><button class="primary" data-act="copy" data-id="${id}">Copiar recibo</button></div>`;
 }
 
+const empEdit={};
 function viewFunc(){
   const emps=empList(),c=cfg();
   const cpfOk=v=>!v||v.length<14||cpfValido(v);
@@ -1792,11 +1799,19 @@ function viewFunc(){
   </section>
   <h2 style="margin-top:6px">Funcionárias</h2>`;
   if(!emps.length)h+=`<div class="banner info">Cadastre cada funcionária uma vez. Depois, todo mês é só abrir o “Cálculo do mês” e lançar faltas ou horas extras, se houver.</div>`;
-  for(const e of emps){
+  // Funcionárias novas ainda não salvas aparecem no fim da lista
+  const lista=[...emps,...Object.keys(empEdit).filter(id=>!S.emps[id]).map(id=>({id,...NEW_EMP(),...empEdit[id]}))];
+  for(const e0 of lista){
+    const editando=!!empEdit[e0.id],novo=editando&&!S.emps[e0.id];
+    const e=editando?{id:e0.id,...NEW_EMP(),...empEdit[e0.id]}:e0;
     const f=(k,lbl,attrs="")=>`<div class="field"><label for="e-${e.id}-${k}">${lbl}</label><input id="e-${e.id}-${k}" data-emp-f="${k}" value="${esc(e[k])}" ${attrs}></div>`;
-    h+=`<section class="card" data-emp="${e.id}">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>${esc(e.nome||"Nova funcionária")}</h2>
-        <span id="del-${e.id}"><button class="ghost danger" data-act="askdel" data-id="${e.id}">Remover</button></span></div>
+    h+=`<section class="card ${editando?"editando":"travado"}" data-emp="${e.id}">
+      <div class="emp-topo"><h2>${esc(e.nome||"Nova funcionária")}${novo?' <span class="chip informal">não salva</span>':editando?' <span class="chip informal">editando</span>':""}</h2>
+        <span class="emp-botoes" id="del-${e.id}">${editando
+          ?`<button type="button" data-act="empCancelar" data-id="${e.id}">Cancelar</button><button type="button" class="primary" data-act="empSalvar" data-id="${e.id}">Salvar</button>`
+          :`<button type="button" class="ghost danger" data-act="askdel" data-id="${e.id}">Remover</button><button type="button" data-act="empEditar" data-id="${e.id}">Editar</button>`}</span></div>
+      <div class="emp-msg cpf-msg" id="emp-msg-${e.id}"></div>
+      <div class="emp-campos">
       <div class="grid-form">
         ${f("nome","Nome",'type="text" placeholder="Ex.: Maria"')}
         <div class="field"><label for="e-${e.id}-funcao">Função</label><select id="e-${e.id}-funcao" data-emp-f="funcao">${["Empregada doméstica","Babá","Cuidadora","Cozinheira","Motorista","Outra"].map(o=>`<option ${o===e.funcao?"selected":""}>${o}</option>`).join("")}</select></div>
@@ -1825,8 +1840,9 @@ function viewFunc(){
         ${f("descontoFixo","Desconto fixo mensal (R$)",'type="number" step="0.01" min="0"')}
         ${f("descontoDesc","Descrição do desconto",'type="text" placeholder="Ex.: plano de saúde"')}
       </div>
-      ${blocoAcesso(e)}
-      ${blocoDocs(e)}
+      </div>
+      ${novo?'<div class="muted small">Salve a funcionária para criar o acesso dela ao app e enviar documentos.</div>':blocoAcesso(e)}
+      ${novo?"":blocoDocs(e)}
     </section>`;
   }
   return h+`<div><button class="primary" data-act="addEmp">+ Adicionar funcionária</button></div></div>`;
@@ -1919,7 +1935,7 @@ view.addEventListener("input",ev=>{
     l[t.dataset.k]=t.dataset.k==="valor"?(t.value===""?"":n(t.value)):t.value;updateOutputs();saveMes();return}
   if(t.dataset.empF==="cpf"||t.dataset.cfg==="empregadorCPF"){t.value=mascaraCPF(t.value);const ok=t.value.length<14||cpfValido(t.value);t.setAttribute("aria-invalid",ok?"false":"true");const m=t.parentElement.querySelector(".cpf-msg");if(m)m.textContent=ok?"":"CPF inválido. Confira os números."}
   if(t.dataset.adj&&sec){const id=sec.dataset.emp;S.mes.ajustes=S.mes.ajustes||{};const a={...NEW_ADJ(),...(S.mes.ajustes[id]||{})};a[t.dataset.adj]=t.type==="number"?n(t.value):t.value;S.mes.ajustes[id]=a;updateOutputs();saveMes();return}
-  if(t.dataset.empF&&sec){const id=sec.dataset.emp;const e=S.emps[id];e[t.dataset.empF]=t.type==="number"?n(t.value):t.value;if(t.dataset.empF==="nome")sec.querySelector("h2").textContent=t.value||"Nova funcionária";saveEmp(id);return}
+  if(t.dataset.empF&&sec){const id=sec.dataset.emp;const e=empEdit[id];if(!e)return;e[t.dataset.empF]=t.type==="number"?n(t.value):t.value;if(t.dataset.empF==="nome"){const h2=sec.querySelector("h2");if(h2&&h2.firstChild)h2.firstChild.textContent=(t.value||"Nova funcionária")+" "}return}
   if(t.dataset.cfg){S.cfg={...cfg()};S.cfg[t.dataset.cfg]=t.type==="number"?n(t.value):t.value;saveCfg();return}
   if(t.dataset.inss){S.cfg={...cfg()};S.cfg.inss=c2(S.cfg.inss);S.cfg.inss[+t.dataset.inss][t.dataset.k]=n(t.value);saveCfg();return}
   if(t.dataset.enc){S.cfg={...cfg()};S.cfg.encargos={...S.cfg.encargos,[t.dataset.enc]:n(t.value)};saveCfg();return}
@@ -1940,10 +1956,10 @@ view.addEventListener("change",ev=>{
    if(t.dataset.loteOp){lote[t.dataset.loteOp]=t.checked;const b2=document.getElementById("lote-prev");if(b2)b2.innerHTML=viewPrevLote();return}}
   const t=ev.target;const sec=t.closest("[data-emp]");
   if(t.dataset.lanc!==undefined&&t.tagName==="SELECT"&&sec&&!folhaSalva()){const a=getAdj(sec.dataset.emp);const l=a.lancamentos[+t.dataset.lanc];if(l){l.tipo=t.value;updateOutputs();saveMes()}return}
-  if(t.dataset.dia!==undefined&&sec){const e=S.emps[sec.dataset.emp];const d=+t.dataset.dia;const s=new Set(e.dias||[]);t.checked?s.add(d):s.delete(d);e.dias=[...s].sort();saveEmp(sec.dataset.emp);return}
-  if(t.dataset.empReg&&sec){S.emps[sec.dataset.emp].registrada=t.value==="1";saveEmp(sec.dataset.emp);render();return}
-  if(t.dataset.empB&&sec){S.emps[sec.dataset.emp][t.dataset.empB]=t.checked;saveEmp(sec.dataset.emp);return}
-  if(t.dataset.empF&&t.tagName==="SELECT"&&sec){S.emps[sec.dataset.emp][t.dataset.empF]=t.value;saveEmp(sec.dataset.emp);return}
+  if(t.dataset.dia!==undefined&&sec){const e=empEdit[sec.dataset.emp];if(!e)return;const d=+t.dataset.dia;const s=new Set(e.dias||[]);t.checked?s.add(d):s.delete(d);e.dias=[...s].sort();return}
+  if(t.dataset.empReg&&sec){const e=empEdit[sec.dataset.emp];if(!e)return;e.registrada=t.value==="1";render();return}
+  if(t.dataset.empB&&sec){const e=empEdit[sec.dataset.emp];if(!e)return;e[t.dataset.empB]=t.checked;return}
+  if(t.dataset.empF&&t.tagName==="SELECT"&&sec){const e=empEdit[sec.dataset.emp];if(!e)return;e[t.dataset.empF]=t.value;return}
   if(t.dataset.cfgb){S.cfg={...cfg(),[t.dataset.cfgb]:t.checked};saveCfg();render();return}
   if(t.dataset.cfg&&t.tagName==="SELECT"){S.cfg={...cfg(),[t.dataset.cfg]:t.value};saveCfg();render();return}
   if(t.dataset.fx&&t.type==="checkbox"){S.cfg={...cfg()};S.cfg.feriadosExtras=c2(S.cfg.feriadosExtras);const fx=S.cfg.feriadosExtras[+t.dataset.fx];
@@ -1956,7 +1972,15 @@ view.addEventListener("click",async ev=>{
     a.faltasDias=fd;S.mes.ajustes[id]=a;updateOutputs();saveMes();const nb=document.querySelector(`[data-emp="${id}"] button[data-falta="${k}"]`);if(nb)nb.focus();return}
   const b=ev.target.closest("button[data-act]");if(!b)return;const a=b.dataset.act;
   if(a==="goFunc"){tab="func";render()}
-  else if(a==="addEmp"){const id=uid();S.emps[id]=NEW_EMP();write("funcionarias/"+id,S.emps[id]);render();setTimeout(()=>{const el=document.getElementById(`e-${id}-nome`);if(el)el.focus()},50)}
+  else if(a==="addEmp"){const id=uid();empEdit[id]=NEW_EMP();render();setTimeout(()=>{const el=document.getElementById(`e-${id}-nome`);if(el){el.scrollIntoView({block:"center"});el.focus()}},50)}
+  else if(a==="empEditar"){const id=b.dataset.id;empEdit[id]=JSON.parse(JSON.stringify(S.emps[id]||NEW_EMP()));render();const el=document.getElementById(`e-${id}-nome`);if(el)el.focus()}
+  else if(a==="empCancelar"){const id=b.dataset.id;delete empEdit[id];render();toast(S.emps[id]?"Alterações descartadas":"Cadastro cancelado")}
+  else if(a==="empSalvar"){const id=b.dataset.id,e=empEdit[id];if(!e)return;const msg=document.getElementById("emp-msg-"+id);
+    const erros=[];if(!(e.nome||"").trim())erros.push("preencha o nome");if(!(n(e.salario)>0))erros.push("informe o salário");
+    if(e.cpf&&!cpfValido(e.cpf))erros.push("confira o CPF");if(!(e.dias||[]).length)erros.push("marque os dias que ela trabalha");
+    if(erros.length){msg.textContent="Para salvar, "+erros.join(", ")+".";return}
+    e.nome=e.nome.trim();S.emps[id]=JSON.parse(JSON.stringify(e));delete empEdit[id];
+    await write("funcionarias/"+id,S.emps[id]);render();toast("Funcionária salva")}
   else if(a==="askdel"){document.getElementById("del-"+b.dataset.id).innerHTML=`<span class="small">Remover mesmo?</span> <button class="danger" data-act="del" data-id="${b.dataset.id}">Sim, remover</button> <button data-act="nodel">Cancelar</button>`}
   else if(a==="nodel"){render()}
   else if(a==="del"){delEmp(b.dataset.id)}
