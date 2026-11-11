@@ -251,6 +251,10 @@ input.mini{width:64px;display:inline-block;padding:4px 6px;text-align:center;mar
 .adv-item [data-act=advVer]{align-self:flex-start;padding-inline:0}
 .adv-item.emitida{border-left-color:var(--bad)}.adv-item.dispensada{border-left-color:var(--line);opacity:.8}
 .sw input{width:22px;height:22px}
+.bloqueio{border:2px solid var(--bad);text-align:center;align-items:center;gap:12px}
+.bloqueio h2{color:var(--bad)}
+.bloq-ico{width:56px;height:56px;border-radius:50%;background:var(--warn-soft);color:var(--bad);display:flex;align-items:center;justify-content:center;font-size:1.8rem}
+.bloq-btn{font-size:1.05rem;padding:14px 22px;width:100%;max-width:360px;text-align:center}
 .func-wrap{display:flex;flex-direction:column;gap:14px;max-width:620px;margin:0 auto;width:100%}
 .assinar-box{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-top:8px}
 .primary-link{background:var(--accent);color:var(--surface)!important;border-color:var(--accent);font-weight:600;text-decoration:none;padding:10px 16px}
@@ -973,6 +977,16 @@ function sairFunc(msg){if(funcSessao&&sb)sb.rpc("sair_funcionaria",{p_token:func
 function viewFuncionaria(){
   const d=funcDados||{};const lista=d.recibos;
   let h=`<div class="func-wrap"><section class="card"><div class="conta-linha"><div><div class="muted small">Olá,</div><h2>${esc(d.nome||"")}</h2></div><button type="button" data-act="sairFunc">Sair</button></div></section>`;
+  const advPend=(d.recibos||[]).filter(r=>r.dados&&r.dados.tipo==="documento"&&r.dados.subtipo==="advertencia"&&r.status==="pendente");
+  if(advPend.length){if(funcPonto===null&&!funcCarregando)setTimeout(()=>carregarAbaFunc("ponto"),0);
+    return h+advPend.map(r=>`<section class="card bloqueio"><div class="bloq-ico" aria-hidden="true">⚠</div><h2>Você recebeu uma advertência</h2>
+      <div><b>${esc(r.dados.titulo||"Advertência")}</b><div class="muted small">Enviada em ${r.dados.enviado_em?new Date(r.dados.enviado_em).toLocaleDateString("pt-BR"):""} pelo seu empregador.</div></div>
+      <div>Para voltar a usar o aplicativo, leia a advertência e assine. A assinatura confirma que você recebeu e leu o documento.</div>
+      ${r.sign_url?`<a class="btnlike primary-link bloq-btn" href="${esc(r.sign_url)}" target="_blank" rel="noopener">Ler e assinar a advertência</a>`:""}
+      <div class="muted small">A assinatura é feita no site da ZapSign e pede uma selfie. Depois de assinar, volte aqui.</div>
+      <button type="button" data-act="atualizarFunc">Já assinei, atualizar</button></section>`).join("")
+      +`<div class="label" style="margin-top:6px">Registro de ponto · continua disponível</div>`+viewFuncPonto()+`</div>`;
+  }
   h+=abasFunc();
   if(funcTab==="tarefas")return h+viewFuncTarefas()+`</div>`;
   if(funcTab==="ponto")return h+viewFuncPonto()+`</div>`;
@@ -1601,7 +1615,7 @@ async function avaliarAdvertencias(forcar){
       }
     }
     for(const a of novas){const d={...a,status:"sugerida",criado_em:new Date().toISOString()};S.advs=S.advs||{};S.advs[a.id]=d;await write("advertencias/"+a.id,d)}
-    if(novas.length&&A.auto){for(const a of novas){try{await emitirAdvertencia(a.id,true)}catch(e){}}}
+    if(novas.length&&A.auto){for(const a of novas){const ac=acessos&&acessos[a.func_id];if(ac&&ac.ativo){try{await emitirAdvertencia(a.id)}catch(e){}}}}
     if(novas.length)toast(`${novas.length} advertência(s) ${A.auto?"emitida(s)":"sugerida(s)"} pelas regras`);
   }catch(e){advState.erro=/does not exist|Could not find|PGRST20|column/.test((e.code||"")+(e.message||""))?"Para usar as advertências, as tarefas e o ponto precisam estar ativos (scripts rotina.sql e tarefas_fotos.sql).":(e.message||"Erro ao analisar")}
   advState.avaliando=false;if(tab==="rotina"&&!appHasFocus())render();
@@ -1643,17 +1657,22 @@ function pdfAdvertencia(id){
   const a=S.advs[id];const e=S.emps[a.func_id]||{nome:"Funcionária"};const c=cfg();
   const doc=new J({unit:"mm",format:"a4"});doc.setProperties({title:`Advertência ${e.nome||""}`});desenharAdvertencia(doc,e,c,a);return {doc,e,c,a};
 }
-async function emitirAdvertencia(id,semPergunta){
+async function emitirAdvertencia(id){
   const {doc,e,a}=pdfAdvertencia(id);const ac=acessos&&acessos[a.func_id];
-  if(ac&&ac.ativo){
-    const pdf=doc.output("datauristring").split(",")[1];
-    await api({acao:"documento",casa_id:nuvem.casa.id,func_id:a.func_id,titulo:`Advertência – ${fmtDiaCurto(a.semana_ini)} a ${fmtDiaCurto(a.semana_fim)}`,tipo:"advertencia",nome:e.nome||"Funcionária",empregador_nome:cfg().empregadorNome||nuvem.email,pdf_base64:pdf,app_url:location.origin+"/?assinado=1"});
-    await carregarPublicados();
-  }
-  const d={...a,status:"emitida",emitida_em:new Date().toISOString(),via:ac&&ac.ativo?"zapsign":"impressa"};S.advs[id]=d;await write("advertencias/"+id,d);
+  if(!ac||!ac.ativo)throw new Error("Crie o acesso dela ao app (em Cadastros) para enviar a advertência para assinatura.");
+  const pdf=doc.output("datauristring").split(",")[1];
+  const r=await api({acao:"documento",casa_id:nuvem.casa.id,func_id:a.func_id,titulo:`Advertência – ${fmtDiaCurto(a.semana_ini)} a ${fmtDiaCurto(a.semana_fim)}`,tipo:"advertencia",nome:e.nome||"Funcionária",empregador_nome:cfg().empregadorNome||nuvem.email,pdf_base64:pdf,app_url:location.origin+"/?assinado=1"});
+  await carregarPublicados();
+  const d={...a,status:"emitida",emitida_em:new Date().toISOString(),via:"zapsign",doc_id:r&&r.documento&&r.documento.id||null};S.advs[id]=d;await write("advertencias/"+id,d);
   return d;
 }
-
+function situacaoAssinaturaAdv(a){
+  const p=a.doc_id?publicados.find(x=>x.id===a.doc_id):null;
+  if(!p)return a.status==="emitida"?`<div class="muted small">Enviada para ela assinar na ZapSign. O app dela fica bloqueado até a assinatura.</div>`:"";
+  if(p.status==="assinado")return `<div class="small ok-txt">✓ Assinada por ela em ${new Date(p.assinado_em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${p.emp_sign_url&&!p.emp_assinado_em?" · falta o seu visto (em Assinaturas)":""}</div>`;
+  if(p.status==="recusado")return `<div class="small" style="color:var(--bad)">Ela recusou a assinatura. Registre a ciência com duas testemunhas (Baixar PDF).</div>`;
+  return `<div class="small" style="color:var(--warn)">Aguardando a assinatura dela. O app dela está bloqueado até assinar.</div>`;
+}
 /* Tela */
 let advDraft=null;
 function viewAdvertencias(){
@@ -1676,9 +1695,9 @@ function viewAdvertencias(){
       <span class="chip ${a.status==="emitida"?"bad-chip":a.status==="dispensada"?"":"informal"}" style="margin-left:0">${a.status==="sugerida"?"Sugerida":a.status==="emitida"?`Emitida ${a.emitida_em?new Date(a.emitida_em).toLocaleDateString("pt-BR"):""}`:"Dispensada"}</span></div>
       <button type="button" class="ghost small" data-act="advVer" data-id="${a.id}" aria-expanded="${!!ab}">${ab?"Ocultar":"Ver"} tarefas não cumpridas (${(a.faltas||[]).length})</button>
       ${ab?`<ul class="lista-simples">${(a.faltas||[]).slice().sort((x,z)=>x.data<z.data?-1:1).map(f=>`<li><span>${esc(f.texto)}</span><span class="small muted">${fmtDiaCurto(f.data)} (${DIAS[new Date(f.data+"T12:00:00").getDay()]})${f.refazer?" · devolvida para refazer":""}</span></li>`).join("")}</ul>`:""}
-      <div class="foto-acoes">${a.status==="sugerida"?`<button type="button" class="primary" data-act="advEmitir" data-id="${a.id}">Emitir advertência</button><button type="button" data-act="advDispensar" data-id="${a.id}">Dispensar</button>`:""}
+      <div class="foto-acoes">${a.status==="sugerida"?`<button type="button" class="primary" data-act="advEmitir" data-id="${a.id}" ${ac&&ac.ativo?"":"disabled"}>Emitir advertência</button><button type="button" data-act="advDispensar" data-id="${a.id}">Dispensar</button>`:""}
         <button type="button" class="ghost" data-act="advPdf" data-id="${a.id}">Baixar PDF</button>${a.status==="dispensada"?`<button type="button" class="ghost" data-act="advReabrir" data-id="${a.id}">Reabrir</button>`:""}</div>
-      ${a.status==="sugerida"?`<div class="muted small">${ac&&ac.ativo?"Ao emitir, o documento vai para ela assinar (ciência) na ZapSign.":"Ela não tem acesso ao app: ao emitir, baixe o PDF e colha a assinatura no papel."}</div>`:a.via==="zapsign"?`<div class="muted small">Enviada para assinatura na ZapSign. Acompanhe em Assinaturas.</div>`:""}
+      ${a.status==="sugerida"?(ac&&ac.ativo?`<div class="muted small">Ao emitir, a advertência vai para ela assinar na ZapSign e o app dela fica bloqueado até a assinatura.</div>`:`<div class="small" style="color:var(--bad)">Ela não tem acesso ao app. Crie o acesso em Cadastros para poder emitir.</div>`):situacaoAssinaturaAdv(a)}
     </article>`};
   h+=`<section class="card"><div class="conta-linha"><h2>Para revisar</h2><span class="muted small">${advState.avaliando?"Analisando…":sug.length+" sugerida(s)"}</span></div>${sug.length?`<div class="adv-lista">${sug.map(card).join("")}</div>`:`<div class="muted">${A.ativo?"Nenhuma advertência sugerida.":"Ligue as regras acima para o app analisar as tarefas."}</div>`}</section>`;
   if(out.length)h+=`<section class="card"><h2>Histórico</h2><div class="adv-lista">${out.map(card).join("")}</div></section>`;
@@ -1715,7 +1734,7 @@ function render(){
   document.getElementById("prev").parentElement.hidden=(tab==="func"||tab==="recibos"||tab==="assin"||tab==="rotina");
   const v=document.getElementById("view");
   document.body.classList.toggle("tela-login",mode==="login"||mode==="func");
-  if(mode==="func"){v.innerHTML=viewFuncionaria();if(funcTab==="ponto")iniciarRelogio();return}
+  if(mode==="func"){v.innerHTML=viewFuncionaria();if(document.getElementById("relogio"))iniciarRelogio();return}
   if(mode==="login"){v.innerHTML=viewLogin();const f=document.getElementById(loginTipo==="funcionaria"?"lf-cpf":loginModo==="nova"?"lg-senha":"lg-email");if(f&&!loginEmail)f.focus();return}
   if(mode==="loading"||!S.empsLoaded){v.innerHTML=`<div class="empty"><div class="muted">Carregando suas regras…</div></div>`;return}
   if(tab==="mes"){v.innerHTML=viewMes();if(nuvem)sincronizarAssinaturas()}
@@ -2442,9 +2461,9 @@ view.addEventListener("click",async ev=>{
   else if(a==="advVer"){advState.abertas[b.dataset.id]=!advState.abertas[b.dataset.id];render()}
   else if(a==="advPdf"){try{const {doc,e}=pdfAdvertencia(b.dataset.id);await salvarPDF(doc,`advertencia-${slugNome(e.nome)}-${S.advs[b.dataset.id].semana_fim}.pdf`)}catch(err){toast(err.message)}}
   else if(a==="advEmitir"){const id=b.dataset.id,ad=S.advs[id];const e=S.emps[ad.func_id]||{};const ac=acessos&&acessos[ad.func_id];
-    const ok=await confirmar("Emitir advertência?",`<p><b>${esc(e.nome||"")}</b>: ${esc(ad.descricao)}</p>${ac&&ac.ativo?`<div class="banner info">O documento será enviado para ela assinar (ciência) na ZapSign, com selfie, e aparecerá na área dela.</div>`:`<div class="banner info">Ela não tem acesso ao app. O PDF será baixado para você imprimir e colher a assinatura dela.</div>`}<p class="muted small">Confira as tarefas listadas antes de emitir.</p>`,"Emitir");if(!ok)return;
+    const ok=await confirmar("Emitir advertência?",`<p><b>${esc(e.nome||"")}</b>: ${esc(ad.descricao)}</p><div class="banner info">A advertência será enviada para ela assinar na ZapSign, com selfie. <b>O app dela ficará bloqueado até a assinatura</b> (só o registro de ponto continua disponível).</div><p class="muted small">Confira as tarefas listadas antes de emitir.</p>`,"Emitir");if(!ok)return;
     b.disabled=true;b.textContent="Emitindo…";
-    try{const d=await emitirAdvertencia(id);if(d.via==="impressa"){const {doc}=pdfAdvertencia(id);await salvarPDF(doc,`advertencia-${slugNome(e.nome)}-${ad.semana_fim}.pdf`)}toast("Advertência emitida");render()}
+    try{await emitirAdvertencia(id);toast("Advertência enviada para assinatura");render()}
     catch(err){toast("Não foi possível emitir: "+err.message);b.disabled=false;b.textContent="Emitir advertência"}}
   else if(a==="advDispensar"){if(!await confirmar("Dispensar esta advertência?","<p>Ela sai da lista para revisar e fica no histórico como dispensada. Você pode reabrir depois.</p>","Dispensar","Voltar"))return;
     const id=b.dataset.id;const d={...S.advs[id],status:"dispensada",dispensada_em:new Date().toISOString()};S.advs[id]=d;await write("advertencias/"+id,d);render()}
